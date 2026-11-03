@@ -26,6 +26,18 @@ These are product guesses the spec doesn't pin down. They are cheap to change no
 - **"While you were away" cards** use three fixed sections per session: What ran, What changed, Waiting on you. The Inbox card is where "make it a project?" suggestions appear.
 - **The example prompt auto-types** into the bubble so each flow can be clicked straight through. This is a demo convenience only, not a product behavior.
 
+## 2026-11-03 · Mockup round 2: glass bubble, glow, write-your-own, agent switching
+
+Kirby's feedback on M0, applied to the mockup:
+
+- **Bubble is macOS-style glass** (translucent gradient, heavy backdrop blur, a light inner edge) with Raycast/Linear density: smaller hairline chips, a 16px input, and a footer bar with the agent picker on the left and key hints on the right. Notifications, menus and the menu-bar panel use the same glass. In M1 this maps to `NSVisualEffectView` (SwiftUI materials) or a vibrancy window in Tauri.
+- **Rainbow glow marks big moments only:** summon and paste. It is a ring around the pointer plus a one-shot edge on the bubble, about 1.5 s, never looping. We draw it in our own transparent overlay window. We do not replace or restyle the system cursor: macOS doesn't let an app do that outside its own windows, and it would fight users' pointer size and color settings in Accessibility. With Reduce Motion on, it becomes a still edge with no movement. It never flashes more than once.
+- **Notifications stay off the cursor.** Waiting work shows in the menu-bar badge and macOS notifications. A badge on the cursor was rejected as too distracting.
+- **Design rule: whenever the model offers a choice, the user can also type their own answer.** Applied to the "game idea or Inbox?" fallback, the reroute menu (type a project or a new name), approval notifications (Reply… next to Approve and Deny), and the Inbox "make it a project?" suggestion. Typing a name that doesn't exist creates the project.
+- **Agents are per project, overridable per request.** Each project session has a default agent (Claude Code for now). The coordinator picks the project; the project picks the agent. The bubble footer shows the agent and lets you override it for one request, or you can type `/openclaw` in the request. The routing chip and log always show both, e.g. "→ shop · Claude Code". Changing a project's default agent belongs in settings (not mocked).
+
 ## Pending
+
+- **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.
 
 - **Tech stack (SwiftUI vs Tauri):** to be proposed after M0 is reviewed. No system code until approved.

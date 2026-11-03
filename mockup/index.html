@@ -35,6 +35,11 @@
   --bubble-muted: #626A7B;
   --bubble-line: rgba(20,24,34,.10);
   --chip-bg: #EDEFF4;
+  --glass-a: rgba(255,255,255,.72);
+  --glass-b: rgba(240,242,247,.62);
+  --glass-edge: rgba(255,255,255,.55);
+  --glass-hi: rgba(255,255,255,.9);
+  --chip-glass: rgba(110,118,140,.11);
   --code-bg: #1E1F24;
   --code-fg: #D7DAE0;
   --code-dim: #6E7381;
@@ -62,6 +67,7 @@
     --win: #22252D; --win-fg: #E3E6EC; --win-line: #343844;
     --bubble-bg: rgba(34,36,45,.95); --bubble-fg: #ECEEF3; --bubble-muted: #9CA3B4; --bubble-line: rgba(255,255,255,.10);
     --chip-bg: #30343F;
+    --glass-a: rgba(48,50,62,.6); --glass-b: rgba(24,26,34,.56); --glass-edge: rgba(255,255,255,.09); --glass-hi: rgba(255,255,255,.13); --chip-glass: rgba(255,255,255,.07);
     --p-shop: #43C08A; --p-game: #E59A4E; --p-inbox: #9AA1B3;
     color-scheme: dark;
   }
@@ -74,6 +80,7 @@
   --win: #22252D; --win-fg: #E3E6EC; --win-line: #343844;
   --bubble-bg: rgba(34,36,45,.95); --bubble-fg: #ECEEF3; --bubble-muted: #9CA3B4; --bubble-line: rgba(255,255,255,.10);
   --chip-bg: #30343F;
+  --glass-a: rgba(48,50,62,.6); --glass-b: rgba(24,26,34,.56); --glass-edge: rgba(255,255,255,.09); --glass-hi: rgba(255,255,255,.13); --chip-glass: rgba(255,255,255,.07);
   --p-shop: #43C08A; --p-game: #E59A4E; --p-inbox: #9AA1B3;
   color-scheme: dark;
 }
@@ -213,91 +220,136 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 /* fake cursor */
 #cursor { position: absolute; width: 18px; height: 22px; z-index: 60; pointer-events: none; transition: left .45s cubic-bezier(.3,.7,.3,1), top .45s cubic-bezier(.3,.7,.3,1); }
 
-/* ---------- the bubble ---------- */
+/* ---------- the bubble: macOS glass, Raycast/Linear density ---------- */
+@property --glow-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.glass {
+  color: var(--bubble-fg);
+  background: linear-gradient(180deg, var(--glass-a), var(--glass-b));
+  -webkit-backdrop-filter: blur(36px) saturate(1.9); backdrop-filter: blur(36px) saturate(1.9);
+  box-shadow: inset 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-hi), 0 0 0 .5px rgba(0,0,0,.38), 0 24px 64px -8px rgba(5,8,20,.45), 0 4px 14px rgba(5,8,20,.16);
+}
 #bubble {
-  position: absolute; width: 420px; z-index: 40; background: var(--bubble-bg); color: var(--bubble-fg);
-  border-radius: 16px; backdrop-filter: blur(24px) saturate(1.4);
-  box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 22px 60px rgba(10,15,35,.35);
-  font-size: 13.5px; line-height: 1.45; display: grid; gap: 0; transform-origin: 0 0;
-  animation: pop .16s cubic-bezier(.2,.9,.3,1.2);
+  position: absolute; width: 440px; z-index: 40; border-radius: 14px;
+  font: 13px/1.45 var(--f-mac); letter-spacing: -.003em; display: grid;
+  animation: pop .18s cubic-bezier(.2,.9,.3,1.15);
 }
-@keyframes pop { from { transform: scale(.94); opacity: 0; } }
-.b-ctx { display: flex; flex-wrap: wrap; gap: 5px; padding: 12px 12px 0; align-items: center; }
-.cchip {
-  display: inline-flex; align-items: center; gap: 5px; background: var(--chip-bg); border-radius: 7px; padding: 3px 4px 3px 8px;
-  font-size: 12px; color: var(--bubble-fg); max-width: 100%;
+@keyframes pop { from { transform: scale(.96) translateY(-4px); opacity: 0; } }
+/* rainbow edge for big moments (summon, paste). Reduced Motion gets a still edge instead. */
+#bubble::before, #bubble::after {
+  content: ""; position: absolute; pointer-events: none; opacity: 0;
+  background: conic-gradient(from var(--glow-a), #FF5F6D, #FFB36B, #F5E663, #5EE7A0, #4FC3F7, #7C83FF, #D26BFF, #FF5F6D);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
-.cchip .ico { font-size: 11px; opacity: .8; }
-.cchip.shot img, .cchip.shot .thumb { width: 26px; height: 17px; border-radius: 3px; display: block; background: linear-gradient(135deg, #2A2B31 55%, #19191D 55%); box-shadow: 0 0 0 .5px rgba(0,0,0,.3); }
-.cchip.secret { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--bubble-fg); }
-.cchip .x { border: 0; background: transparent; width: 18px; height: 18px; border-radius: 4px; padding: 0; color: var(--bubble-muted); font-size: 14px; line-height: 1; }
-.cchip .x:hover { background: rgba(127,127,127,.25); color: var(--bubble-fg); }
-.cchip.removed { display: none; }
-.b-ctx .lbl { font-size: 11px; color: var(--bubble-muted); margin-right: 2px; }
-.b-input { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 12px; }
-.b-input textarea {
-  flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--bubble-fg); font: 15px/1.4 var(--f-mac);
-  min-height: 22px; max-height: 80px; padding: 2px 0;
+#bubble::before { inset: -1.5px; border-radius: 15.5px; padding: 1.5px; }
+#bubble::after { inset: -16px; border-radius: 30px; padding: 16px; filter: blur(9px); }
+#bubble.glow::before, #bubble.glow::after { animation: glow 1.5s cubic-bezier(.3,.6,.3,1) forwards; }
+#bubble.glow-static::before { opacity: 1; }
+@keyframes glow { 0% { --glow-a: 0deg; opacity: 0; } 12% { opacity: 1; } 65% { opacity: .9; } 100% { --glow-a: 320deg; opacity: 0; } }
+.cring {
+  position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; z-index: 58; pointer-events: none;
+  background: conic-gradient(from var(--glow-a), #FF5F6D, #FFB36B, #F5E663, #5EE7A0, #4FC3F7, #7C83FF, #D26BFF, #FF5F6D);
+  -webkit-mask: radial-gradient(closest-side, transparent 72%, #000 74%, #000 98%, transparent 100%);
+  mask: radial-gradient(closest-side, transparent 72%, #000 74%, #000 98%, transparent 100%);
+  animation: ring .9s cubic-bezier(.2,.7,.3,1) forwards;
 }
-.b-input textarea::placeholder { color: var(--bubble-muted); }
-.b-input textarea:focus-visible { outline: 0; }
-.ibtn { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--bubble-muted); padding: 0; }
-.ibtn:hover { background: rgba(127,127,127,.18); }
-.ibtn.send { background: var(--accent); color: #fff; }
-.ibtn svg { width: 16px; height: 16px; }
+.cring.still { animation: none; opacity: .9; transform: scale(.8); }
+@keyframes ring { 0% { transform: scale(.3); opacity: 0; --glow-a: 0deg; } 20% { opacity: 1; } 100% { transform: scale(1.5); opacity: 0; --glow-a: 200deg; } }
 
-.b-route { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px; font-size: 12px; color: var(--bubble-muted); flex-wrap: wrap; }
-.b-asked { padding: 12px 12px 6px; font-size: 14px; font-weight: 600; }
+.b-ctx { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 10px 0; align-items: center; }
+.cchip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--chip-glass); border: 1px solid var(--bubble-line); border-radius: 6px; padding: 1px 2px 1px 7px;
+  font-size: 11.5px; color: var(--bubble-fg); max-width: 100%; height: 22px;
+}
+.cchip .ico { font-size: 10.5px; color: var(--bubble-muted); }
+.cchip.shot .thumb { width: 22px; height: 14px; border-radius: 3px; display: block; background: linear-gradient(135deg, #2A2B31 55%, #19191D 55%); box-shadow: 0 0 0 .5px rgba(0,0,0,.3); }
+.cchip.secret { background: color-mix(in srgb, var(--warn) 14%, transparent); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.cchip .x { border: 0; background: transparent; width: 16px; height: 16px; border-radius: 4px; padding: 0; color: var(--bubble-muted); font-size: 13px; line-height: 1; opacity: .7; }
+.cchip .x:hover { background: var(--chip-glass); color: var(--bubble-fg); opacity: 1; }
+.cchip.removed { display: none; }
+.b-input { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px 14px; }
+.b-input textarea {
+  flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--bubble-fg); font: 400 16px/1.4 var(--f-mac); letter-spacing: -.01em;
+  min-height: 24px; max-height: 80px; padding: 3px 0;
+}
+.b-input textarea::placeholder { color: var(--bubble-muted); opacity: .8; }
+.b-input textarea:focus-visible { outline: 0; }
+.ibtn { border: 0; background: transparent; width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: var(--bubble-muted); padding: 0; }
+.ibtn:hover { background: var(--chip-glass); color: var(--bubble-fg); }
+.ibtn.send { color: var(--accent); }
+.ibtn svg { width: 15px; height: 15px; }
+
+.b-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 6px; border-top: 1px solid var(--bubble-line); font-size: 11.5px; color: var(--bubble-muted); }
+.agent { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 3px 7px 3px 4px; border-radius: 6px; font: 500 12px var(--f-mac); color: var(--bubble-fg); }
+.agent:hover, .agent[aria-expanded="true"] { background: var(--chip-glass); }
+.agent .mark { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; color: #fff; font: 700 9px/1 var(--f-mac); }
+.agent .auto { color: var(--bubble-muted); font-weight: 400; }
+.agent .chev { color: var(--bubble-muted); font-size: 9px; }
+.mk-claude { background: linear-gradient(135deg, #E08A5B, #C7643B); }
+.mk-openclaw { background: linear-gradient(135deg, #E25555, #8C2B4C); }
+.keys { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.keys span { display: inline-flex; gap: 5px; align-items: center; }
+.k { font: 500 10.5px/1 var(--f-mac); color: var(--bubble-fg); background: var(--chip-glass); border: 1px solid var(--bubble-line); border-radius: 4px; padding: 2px 5px; min-width: 18px; text-align: center; }
+
+.b-route { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 11.5px; color: var(--bubble-muted); flex-wrap: wrap; }
+.b-asked { padding: 10px 14px 6px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .rchip {
-  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bubble-line); background: transparent; border-radius: 999px; padding: 3px 10px 3px 8px;
-  font: 600 12px/1.3 var(--f-mac); color: var(--bubble-fg);
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bubble-line); background: var(--chip-glass); border-radius: 6px; padding: 2px 8px 2px 7px; height: 22px;
+  font: 500 12px/1 var(--f-mac); color: var(--bubble-fg);
 }
 .rchip:hover { border-color: var(--bubble-muted); }
-.rchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--p-inbox); }
-.rchip .caret { opacity: .55; font-size: 9px; }
+.rchip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--p-inbox); }
+.rchip .ag { color: var(--bubble-muted); font-weight: 400; }
+.rchip .caret { opacity: .5; font-size: 8px; }
 .rchip.routing { color: var(--bubble-muted); }
-.why { border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--bubble-muted); text-decoration: underline dotted; text-underline-offset: 3px; }
-.trace { margin: 0 12px 10px; padding: 8px 10px; border-radius: 8px; background: var(--chip-bg); font: 11.5px/1.6 var(--f-mono); color: var(--bubble-muted); }
+.why { border: 0; background: transparent; padding: 0; font-size: 11.5px; color: var(--bubble-muted); text-decoration: underline dotted; text-underline-offset: 3px; }
+.trace { margin: 0 10px 10px; padding: 8px 10px; border-radius: 8px; background: var(--chip-glass); border: 1px solid var(--bubble-line); font: 11px/1.6 var(--f-mono); color: var(--bubble-muted); }
 .trace div { display: grid; grid-template-columns: 16px 152px 1fr; gap: 4px; }
 .trace .hit { color: var(--bubble-fg); font-weight: 600; }
 .trace .skip { opacity: .7; }
 
-.menu { position: absolute; z-index: 45; background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 10px; padding: 5px; width: 230px; backdrop-filter: blur(20px);
-  box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 12px 30px rgba(10,15,35,.3); font-size: 13px; }
-.menu .mh { font-size: 11px; color: var(--bubble-muted); padding: 5px 8px 4px; }
-.menu button { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; }
-.menu button:hover { background: var(--accent); color: #fff; }
+.menu { position: absolute; z-index: 45; border-radius: 11px; padding: 5px; width: 250px; font: 13px var(--f-mac); }
+.menu .mh { font-size: 11px; color: var(--bubble-muted); padding: 6px 8px 4px; }
+.menu button { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; color: var(--bubble-fg); }
+.menu button:hover, .menu button:focus-visible { background: var(--chip-glass); outline: 0; }
+.menu button.on { background: var(--chip-glass); }
 .menu button .dot { width: 8px; height: 8px; border-radius: 50%; }
-.menu button small { margin-left: auto; color: inherit; opacity: .6; font-size: 11px; }
+.menu button small { margin-left: auto; color: var(--bubble-muted); font-size: 11px; }
 .menu hr { border: 0; border-top: 1px solid var(--bubble-line); margin: 4px 2px; }
+.menu input, .own input {
+  width: 100%; border: 1px solid var(--bubble-line); background: var(--chip-glass); color: var(--bubble-fg); border-radius: 6px; padding: 6px 8px; font: 13px var(--f-mac); outline: 0;
+}
+.menu input:focus, .own input:focus { border-color: var(--accent); }
+.menu .mi { padding: 3px 3px 5px; }
 
-.b-reply { padding: 2px 14px 4px; max-height: 280px; overflow: auto; font-size: 13.5px; }
+.b-reply { padding: 2px 14px 6px; max-height: 280px; overflow: auto; font-size: 13.5px; line-height: 1.55; }
 .b-reply p { margin: 0 0 8px; }
 .b-reply ul { margin: 0 0 8px; padding-left: 18px; }
-.b-reply code { font: 12px var(--f-mono); background: var(--chip-bg); padding: 1px 4px; border-radius: 4px; }
-.b-reply pre { margin: 0 0 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 8px 10px; font: 12px/1.5 var(--f-mono); white-space: pre-wrap; }
-.b-reply .caret-blink { display: inline-block; width: 7px; height: 14px; background: var(--accent); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+.b-reply code { font: 11.5px var(--f-mono); background: var(--chip-glass); border: 1px solid var(--bubble-line); padding: 0 4px; border-radius: 4px; }
+.b-reply pre { margin: 0 0 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--f-mono); white-space: pre-wrap; }
+.b-reply .caret-blink { display: inline-block; width: 6px; height: 13px; background: var(--accent); vertical-align: -2px; border-radius: 1px; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .b-reply .saved { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ok); font-weight: 600; margin-bottom: 8px; }
 .status-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--bubble-muted); margin-bottom: 6px; }
-.spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bubble-line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.spinner { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--bubble-line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.steps-mini { font: 11.5px/1.7 var(--f-mono); color: var(--bubble-muted); margin: 0 0 8px; }
+.steps-mini { font: 11px/1.7 var(--f-mono); color: var(--bubble-muted); margin: 0 0 8px; }
 .steps-mini .ok { color: var(--ok); }
 
-.b-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 12px; border-top: 1px solid var(--bubble-line); }
-.abtn { border: 1px solid var(--bubble-line); background: transparent; border-radius: 7px; padding: 5px 10px; font: 500 12.5px var(--f-mac); color: var(--bubble-fg); display: inline-flex; gap: 6px; align-items: center; }
-.abtn:hover { background: rgba(127,127,127,.14); }
-.abtn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-.abtn kbd { font: 10.5px var(--f-mono); opacity: .7; }
-.ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 12px 12px; font-size: 13px; }
-.ask .q { width: 100%; color: var(--bubble-fg); font-weight: 600; margin-bottom: 2px; }
+.b-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--bubble-line); }
+.abtn { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 4px 8px; font: 500 12.5px var(--f-mac); color: var(--bubble-fg); display: inline-flex; gap: 7px; align-items: center; }
+.abtn:hover { background: var(--chip-glass); }
+.abtn.primary { background: var(--chip-glass); border-color: var(--bubble-line); }
+.abtn kbd { font: 500 10.5px/1 var(--f-mac); color: var(--bubble-muted); }
+.ask { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 0 10px 10px; font-size: 13px; }
+.ask .q { width: 100%; color: var(--bubble-fg); font-weight: 600; margin: 0 4px 4px; }
+.ask .hintx { color: var(--bubble-muted); font-size: 11.5px; margin-left: 4px; }
+.own { width: 100%; margin-top: 4px; }
 
 /* ---------- notifications ---------- */
 #notifs { position: absolute; top: 38px; right: 12px; width: 350px; display: grid; gap: 8px; z-index: 55; }
 .notif {
-  background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 14px; padding: 11px 12px; backdrop-filter: blur(24px);
-  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 10px 30px rgba(10,15,35,.25); font-size: 13px; animation: slide .35s cubic-bezier(.2,.9,.3,1);
+  border-radius: 14px; padding: 11px 12px; font-size: 13px; animation: slide .35s cubic-bezier(.2,.9,.3,1);
   display: grid; grid-template-columns: 34px 1fr; gap: 4px 10px;
 }
 @keyframes slide { from { transform: translateX(380px); } }
@@ -310,8 +362,7 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .notif .danger { color: var(--danger); font-weight: 600; font-size: 12px; display: inline-flex; gap: 5px; align-items: center; }
 
 /* ---------- menu-bar panel ---------- */
-#mbpanel { position: absolute; top: 34px; right: 120px; width: 400px; z-index: 56; background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 14px;
-  backdrop-filter: blur(24px); box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 20px 50px rgba(10,15,35,.32); max-height: 680px; overflow: auto; animation: pop .14s ease-out; }
+#mbpanel { position: absolute; top: 34px; right: 120px; width: 400px; z-index: 56; border-radius: 14px; max-height: 680px; overflow: auto; animation: pop .14s ease-out; }
 .mbp-head { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 16px 6px; }
 .mbp-head h4 { margin: 0; font-size: 15px; }
 .mbp-head span { font-size: 12px; color: var(--bubble-muted); }
@@ -469,10 +520,10 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
             <i style="background:#2B79D6"></i><i style="background:#1E9BF0"></i><i style="background:#3C3C44"></i><i style="background:#E5A13A"></i><i style="background:#5BB86A"></i>
           </div>
 
-          <div id="bubble" role="dialog" aria-label="Superclick bubble" hidden></div>
-          <div class="menu" id="rmenu" hidden></div>
+          <div id="bubble" class="glass" role="dialog" aria-label="Superclick bubble" hidden></div>
+          <div class="menu glass" id="rmenu" hidden></div>
           <div id="notifs" aria-live="polite"></div>
-          <div id="mbpanel" hidden></div>
+          <div id="mbpanel" class="glass" hidden></div>
           <div id="away" hidden><div><div class="big" id="away-clock">12:04</div><p>You stepped away. The shop session keeps working in the background.</p></div></div>
           <div id="toast" hidden></div>
 
@@ -507,6 +558,13 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
     game: { name: 'game idea', color: 'var(--p-game)', path: '~/notes/game-idea', desc: 'Roguelite where the world remembers your runs' },
     inbox: { name: 'Inbox', color: 'var(--p-inbox)', path: null, desc: 'Everything that does not belong to a project' },
   };
+  // Each project session runs on one agent (its default). A request can override it from the bubble footer or with /agent.
+  Object.values(PROJECTS).forEach(p => p.agent = 'claude');
+  const AGENTS = {
+    claude: { name: 'Claude Code', mark: 'C', note: 'CLI · local' },
+    openclaw: { name: 'OpenClaw', mark: 'O', note: 'gateway · v2' },
+  };
+  const agentOf = key => S.agent || (PROJECTS[key] && PROJECTS[key].agent) || 'claude';
   const ORDER_RB = [
     ['<span class="kw">class</span> Order &lt; ApplicationRecord'],
     ['  belongs_to <span class="str">:customer</span>'],
@@ -724,11 +782,12 @@ Finished in 0.21 seconds
     const v = S.vague ? FLOWS['2b'] : f;
     bubble.innerHTML = ctxChips(f.ctx) + `
       <div class="b-input">
-        <textarea id="b-text" rows="1" placeholder="Ask your agents… (@project to pick one)" aria-label="Request"></textarea>
+        <textarea id="b-text" rows="1" placeholder="Ask anything…  @project  /agent" aria-label="Request"></textarea>
         <button type="button" class="ibtn" aria-label="Dictate"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="1.5" width="5" height="9" rx="2.5"/><path d="M3 8a5 5 0 0 0 10 0M8 13v2"/></svg></button>
         <button type="button" class="ibtn send" id="b-send" aria-label="Send"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button>
-      </div>`;
-    bubble.hidden = false; placeBubble();
+      </div>` + footHTML('compose');
+    bubble.hidden = false; placeBubble(); wireFoot();
+    glowAt(S.cx, S.cy); glowBubble();
     bubble.querySelectorAll('.cchip .x').forEach(x => x.onclick = e => {
       const chip = e.target.closest('.cchip'); chip.classList.add('removed');
       toast(`Removed "${chip.querySelector('span:not(.ico):not(.thumb)').textContent}". It won't be sent.`);
@@ -739,6 +798,72 @@ Finished in 0.21 seconds
     setStep(2);
     // type the example prompt so the flow can be clicked straight through; the field stays editable
     typeInto(ta, v.prompt);
+  }
+
+  /* ---------- footer: agent picker + key hints ---------- */
+  function agentBtn() {
+    const key = S.sent && S.route ? agentOf(S.route) : (S.agent || 'claude');
+    const a = AGENTS[key];
+    const auto = S.agent ? '' : '<span class="auto">· auto</span>';
+    return `<button type="button" class="agent" id="agent-btn" aria-haspopup="menu" aria-expanded="false" title="Which agent handles this request"><span class="mark mk-${key}">${a.mark}</span>${esc(a.name)}${auto}<span class="chev">▼</span></button>`;
+  }
+  function footHTML(phase) {
+    const keys = phase === 'compose'
+      ? '<span><span class="k">↵</span>Send</span><span><span class="k">⌘K</span>Actions</span><span><span class="k">esc</span></span>'
+      : (S.flow == 1 ? '<span><span class="k">⌘↵</span>Paste here</span>' : '<span><span class="k">⌘C</span>Copy</span>') + '<span><span class="k">⌘K</span>Actions</span><span><span class="k">esc</span></span>';
+    return `<div class="b-foot" id="b-foot">${agentBtn()}<span class="keys">${keys}</span></div>`;
+  }
+  function wireFoot() { const b = $('#agent-btn'); if (b) b.onclick = openAgents; }
+  function refreshAgent() { const b = $('#agent-btn'); if (b) { b.outerHTML = agentBtn(); wireFoot(); } }
+
+  function menuAt(anchor, html) {
+    rmenu.innerHTML = html;
+    const r = anchor.getBoundingClientRect(), d = desktop.getBoundingClientRect(), s = d.width / 1180;
+    let left = (r.left - d.left) / s, top = (r.bottom - d.top) / s + 4;
+    rmenu.hidden = false;
+    const h = rmenu.offsetHeight;
+    if (top + h > 730) top = (r.top - d.top) / s - h - 4;
+    rmenu.style.left = Math.min(left, 1170 - 250) + 'px'; rmenu.style.top = top + 'px';
+  }
+
+  function openAgents(e) {
+    e.stopPropagation();
+    if (!rmenu.hidden) { rmenu.hidden = true; return; }
+    const proj = S.sent && S.route ? PROJECTS[S.route] : null;
+    const def = proj ? AGENTS[proj.agent].name : 'each project\'s default';
+    menuAt($('#agent-btn'), `<div class="mh">Agent for this request</div>
+      <button type="button" data-a="auto" class="${S.agent ? '' : 'on'}"><span class="mark mk-claude" style="width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:#fff;font:700 9px var(--f-mac)">A</span>Auto<small>${esc(def)}</small></button>
+      ${Object.entries(AGENTS).map(([k, a]) => `<button type="button" data-a="${k}" class="${S.agent === k ? 'on' : ''}"><span class="mark mk-${k}" style="width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:#fff;font:700 9px var(--f-mac)">${a.mark}</span>${esc(a.name)}<small>${esc(a.note)}</small></button>`).join('')}
+      <hr><button type="button" data-a="add"><span class="dot" style="border:1px solid currentColor"></span>Connect another agent…</button>
+      <div class="mh" style="padding-top:2px">Tip: type /openclaw in the request</div>`);
+    rmenu.querySelectorAll('button').forEach(b => b.onclick = () => {
+      rmenu.hidden = true;
+      const k = b.dataset.a;
+      if (k === 'add') { toast('Agents plug in through adapters. Settings would list what you can connect.'); return; }
+      S.agent = k === 'auto' ? null : k;
+      refreshAgent();
+      if (!S.sent && $('#b-text')) $('#b-text').focus();
+      if (S.sent && S.route) {
+        const ag = AGENTS[agentOf(S.route)].name;
+        $('#b-route').querySelector('.ag').textContent = '· ' + ag;
+        log(`<b>${clock()}</b> agent for this request → <b>${esc(ag)}</b> (same project: ${esc(PROJECTS[S.route].name)})`);
+        toast(`${PROJECTS[S.route].name} will hand this to ${ag}. The project's default stays ${AGENTS[PROJECTS[S.route].agent].name}.`);
+      }
+    });
+  }
+
+  /* ---------- big-moment glow ---------- */
+  function glowAt(x, y) {
+    const r = document.createElement('div');
+    r.className = 'cring' + (reduce ? ' still' : '');
+    r.style.left = x + 'px'; r.style.top = y + 'px';
+    desktop.append(r);
+    setTimeout(() => r.remove(), reduce ? 700 : 950);
+  }
+  function glowBubble() {
+    bubble.classList.remove('glow', 'glow-static'); void bubble.offsetWidth;
+    bubble.classList.add(reduce ? 'glow-static' : 'glow');
+    setTimeout(() => bubble.classList.remove('glow', 'glow-static'), reduce ? 700 : 1600);
   }
 
   async function typeInto(ta, text) {
@@ -765,6 +890,8 @@ Finished in 0.21 seconds
     S.sent = true; S.asked = text;
     const kept = [...bubble.querySelectorAll('.cchip:not(.removed)')].map(c => c.outerHTML).join('');
     const explicit = text.match(/@(shop|game|inbox)/i);
+    const slash = text.match(/\/(openclaw|claude)\b/i);
+    if (slash) S.agent = slash[1].toLowerCase();
     let route = { ...v.route };
     if (explicit) { const k = explicit[1].toLowerCase(); route = { to: k, step: 1, label: 'Explicit target', why: `you wrote @${explicit[1]}` }; }
 
@@ -774,8 +901,8 @@ Finished in 0.21 seconds
       <div id="b-trace"></div>
       <div class="b-reply" id="b-reply"></div>
       <div id="b-ask"></div>
-      <div class="b-actions" id="b-actions" hidden></div>`;
-    placeBubble();
+      <div class="b-actions" id="b-actions" hidden></div>` + footHTML('reply');
+    placeBubble(); wireFoot();
     renderGuide();
     await wait(reduce ? 0 : 520);
     if (route.to) finishRoute(route); else askFallback(route);
@@ -802,15 +929,15 @@ Finished in 0.21 seconds
 
   function routeChip(key) {
     const p = PROJECTS[key];
-    return `<button type="button" class="rchip" id="rchip" aria-haspopup="menu" title="Reroute this request"><span class="dot" style="background:${p.color}"></span>→ ${esc(p.name)}<span class="caret">▼</span></button>`;
+    return `<button type="button" class="rchip" id="rchip" aria-haspopup="menu" title="Reroute this request"><span class="dot" style="background:${p.color}"></span>→ ${esc(p.name)}<span class="ag">· ${esc(AGENTS[agentOf(key)].name)}</span><span class="caret">▼</span></button>`;
   }
 
   function finishRoute(route, rerouted) {
     S.route = route.to;
     $('#b-route').innerHTML = routeChip(route.to) + `<span>${esc(route.label)}</span><button type="button" class="why" id="why">Why?</button>`;
-    $('#rchip').onclick = openReroute;
+    $('#rchip').onclick = openReroute; refreshAgent();
     $('#why').onclick = () => { const t = $('#b-trace'); t.innerHTML = t.innerHTML ? '' : traceHTML(route); placeBubble(); };
-    log(`<b>${clock()}</b> "${esc(S.asked)}" → <b>${esc(PROJECTS[route.to].name)}</b>  [${rerouted ? 'reroute by you' : 'step ' + route.step + ': ' + esc(route.label)}] ${esc(route.why)}`);
+    log(`<b>${clock()}</b> "${esc(S.asked)}" → <b>${esc(PROJECTS[route.to].name)}</b> on ${esc(AGENTS[agentOf(route.to)].name)}  [${rerouted ? 'reroute by you' : 'step ' + route.step + ': ' + esc(route.label)}] ${esc(route.why)}`);
     if (!rerouted) {
       setStep(S.flow == 3 ? 2 : 4);
       if (S.flow == 3) runLongTask(); else streamReply();
@@ -821,38 +948,59 @@ Finished in 0.21 seconds
     $('#b-route').innerHTML = `<span class="rchip routing"><span class="dot"></span>Not sure where this goes</span>`;
     $('#b-trace').innerHTML = traceHTML(route);
     $('#b-ask').innerHTML = `<div class="ask"><span class="q">game idea or Inbox?</span>
-      <button type="button" class="abtn" data-k="game"><span class="rchip-dot"></span>game idea</button>
-      <button type="button" class="abtn primary" data-k="inbox">Inbox</button>
-      <span style="color:var(--bubble-muted);font-size:12px">Defaults to Inbox</span></div>`;
+      <button type="button" class="abtn" data-k="game"><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--p-game)"></span>game idea <kbd>1</kbd></button>
+      <button type="button" class="abtn primary" data-k="inbox"><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--p-inbox)"></span>Inbox <kbd>2</kbd></button>
+      <span class="hintx">Inbox if you don't pick</span>
+      <div class="own"><input id="own-dest" type="text" placeholder="Or type where it should go…" aria-label="Type a project or a new project name"></div></div>`;
     placeBubble();
-    $('#b-ask').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const pick = (k, typed) => {
       $('#b-ask').innerHTML = ''; $('#b-trace').innerHTML = '';
-      const k = b.dataset.k;
-      finishRoute({ ...route, to: k, label: 'You picked', why: `you picked ${PROJECTS[k].name} when asked` });
+      finishRoute({ ...route, to: k, label: typed ? 'You typed' : 'You picked', why: `you ${typed ? 'typed' : 'picked'} ${PROJECTS[k].name} when asked` });
       toast(`Rule saved: reading-list requests from blog.lowpoly.dev → ${PROJECTS[k].name}`, true);
+    };
+    $('#b-ask').querySelectorAll('button').forEach(b => b.onclick = () => pick(b.dataset.k));
+    $('#own-dest').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return; e.preventDefault();
+      const r = resolveProject(e.target.value); if (!r) return;
+      if (r.created) log(`<b>${clock()}</b> created project <b>${esc(PROJECTS[r.key].name)}</b> from the bubble`);
+      pick(r.key, true);
     });
+  }
+
+  // Free text from a "write your own" field: match a project, or make a new one.
+  function resolveProject(text) {
+    const t = text.trim().replace(/^@/, '');
+    if (!t) return null;
+    const hit = Object.entries(PROJECTS).find(([k, p]) => p.name.toLowerCase() === t.toLowerCase() || k === t.toLowerCase());
+    if (hit) return { key: hit[0], created: false };
+    const key = 'p' + Object.keys(PROJECTS).length;
+    PROJECTS[key] = { name: t, color: 'var(--accent)', path: null, desc: 'New project, created from the bubble', agent: 'claude' };
+    return { key, created: true };
   }
 
   function openReroute(e) {
     e.stopPropagation();
     if (!rmenu.hidden) { rmenu.hidden = true; return; }
-    rmenu.innerHTML = `<div class="mh">Send this request to…</div>` +
-      Object.entries(PROJECTS).map(([k, p]) => `<button type="button" data-k="${k}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}${k === S.route ? '<small>current</small>' : ''}</button>`).join('') +
-      `<hr><button type="button" data-k="new"><span class="dot" style="background:transparent;border:1px solid currentColor"></span>New project…</button>`;
-    const r = $('#rchip').getBoundingClientRect(), d = desktop.getBoundingClientRect(), s = d.width / 1180;
-    rmenu.style.left = ((r.left - d.left) / s) + 'px'; rmenu.style.top = ((r.bottom - d.top) / s + 4) + 'px';
-    rmenu.hidden = false;
-    rmenu.querySelectorAll('button').forEach(b => b.onclick = () => {
+    menuAt($('#rchip'), `<div class="mi"><input id="rr-input" type="text" placeholder="Type a project or a new name…" aria-label="Type a project or a new project name"></div><div class="mh">Send this request to…</div>` +
+      Object.entries(PROJECTS).map(([k, p]) => `<button type="button" data-k="${k}" class="${k === S.route ? 'on' : ''}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}${k === S.route ? '<small>current</small>' : ''}</button>`).join(''));
+    const inp = $('#rr-input'); inp.focus();
+    inp.addEventListener('click', ev => ev.stopPropagation());
+    inp.addEventListener('keydown', ev => {
+      if (ev.key !== 'Enter') return; ev.preventDefault();
+      const r = resolveProject(inp.value); if (!r) return;
+      if (r.created) log(`<b>${clock()}</b> created project <b>${esc(PROJECTS[r.key].name)}</b> from the reroute menu`);
+      go(r.key);
+    });
+    rmenu.querySelectorAll('button').forEach(b => b.onclick = () => go(b.dataset.k));
+    function go(k) {
       rmenu.hidden = true;
-      const k = b.dataset.k;
-      if (k === 'new') { toast('New project: you would name it and pick a folder here (not in this mockup).'); return; }
       if (k === S.route) return;
       const from = PROJECTS[S.route].name;
       finishRoute({ to: k, step: 1, label: 'Rerouted by you', why: `moved from ${from}` }, true);
       const where = S.flow == 2 ? 'blog.lowpoly.dev/*' : 'VS Code in ~/code/shop';
       toast(`Moved to ${PROJECTS[k].name}. New rule: ${where} → ${PROJECTS[k].name}`, true);
       if (S.flow == 2) setStep(5);
-    });
+    }
   }
 
   /* ---------- replies ---------- */
@@ -902,7 +1050,9 @@ Finished in 0.21 seconds
   function paste() {
     done5();
     renderCode(ORDER_RB, { fixed: true });
-    bubble.hidden = true;
+    bubble.hidden = true; rmenu.hidden = true;
+    const ln = $('#code .added'), d = desktop.getBoundingClientRect(), sc = d.width / 1180;
+    if (ln) { const r = ln.getBoundingClientRect(); moveCursor((r.left - d.left) / sc + 380, (r.top - d.top) / sc + 6); glowAt(S.cx, S.cy + 4); }
     toast('Pasted into order.rb line 10', false, () => { renderCode(ORDER_RB); });
     later(() => { const l = $('#code .added'); if (l) l.classList.remove('added'); }, 2400);
   }
@@ -968,26 +1118,32 @@ Finished in 0.21 seconds
 
   function askApproval() {
     if (S.asked3) return; S.asked3 = true;
-    const n = document.createElement('div'); n.className = 'notif'; n.id = 'n-approve';
+    const n = document.createElement('div'); n.className = 'notif glass'; n.id = 'n-approve';
     n.innerHTML = `<span class="appi"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 3l11 5.2-4.6 1.4L8.8 14z"/><circle cx="14.5" cy="14.5" r="2.6"/></svg></span>
       <div class="nh"><span>SUPERCLICK</span><span>now</span></div>
       <div class="nt">shop needs approval</div>
       <div>Run <code>bin/rails test spec/models/order_spec.rb</code></div>
-      <div></div><div class="nb"><button type="button" class="abtn primary" id="n-yes">Approve</button><button type="button" class="abtn" id="n-no">Deny</button></div>`;
+      <div></div><div class="nb"><button type="button" class="abtn primary" id="n-yes">Approve</button><button type="button" class="abtn" id="n-no">Deny</button><button type="button" class="abtn" id="n-reply">Reply…</button></div>`;
     notifs.prepend(n);
     $('#n-yes').onclick = () => decide(true);
     $('#n-no').onclick = () => decide(false);
+    $('#n-reply').onclick = () => {
+      n.querySelector('.nb').innerHTML = `<div class="own"><input id="n-own" type="text" placeholder="e.g. run the whole suite instead" aria-label="Tell shop something else"></div>`;
+      const i = $('#n-own'); i.focus();
+      i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); decide('note', i.value.trim() || 'run the whole suite instead'); } });
+    };
   }
 
-  function decide(yes) {
+  function decide(yes, note) {
+    if (yes === 'note') { S.note = note; yes = true; }
     S.approvedTest = yes;
     setStep(4);
     const n = $('#n-approve');
-    n.querySelector('.nb').innerHTML = yes ? `<span style="color:var(--ok);font-weight:600">✓ Approved. Running tests…</span>` : `<span style="color:var(--bubble-muted)">Denied. shop will wait for you.</span>`;
-    log(`<b>${clock()}</b> shop: ${yes ? 'approved' : 'denied'} "bin/rails test spec/models/order_spec.rb" from a notification`);
+    n.querySelector('.nb').innerHTML = S.note && yes ? `<span style="color:var(--ok);font-weight:600">✓ Sent: "${esc(S.note)}"</span>` : yes ? `<span style="color:var(--ok);font-weight:600">✓ Approved. Running tests…</span>` : `<span style="color:var(--bubble-muted)">Denied. shop will wait for you.</span>`;
+    log(`<b>${clock()}</b> shop: ${S.note ? 'replied "' + esc(S.note) + '" to' : yes ? 'approved' : 'denied'} "bin/rails test spec/models/order_spec.rb" from a notification`);
     later(() => { n.remove(); }, 1800);
     if (yes) later(() => {
-      const d = document.createElement('div'); d.className = 'notif';
+      const d = document.createElement('div'); d.className = 'notif glass';
       d.innerHTML = `<span class="appi"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 3l11 5.2-4.6 1.4L8.8 14z"/><circle cx="14.5" cy="14.5" r="2.6"/></svg></span>
         <div class="nh"><span>SUPERCLICK</span><span>now</span></div>
         <div class="nt">shop fixed the test and wants to push</div>
@@ -1015,7 +1171,7 @@ Finished in 0.21 seconds
     return `
       <div class="card">
         <div class="card-h"><span class="dot" style="background:var(--p-shop)"></span><b>shop</b><span class="task">Fix the failing order_spec test</span><span class="pill wait">Waiting on you</span></div>
-        <div class="sec"><span>What ran</span><ul><li>Read 3 files</li><li>Edited 2 files</li>${yes ? '<li><code>bin/rails test</code>, approved 12:17 · <span style="color:var(--ok)">14 passed</span></li>' : '<li>Paused before running tests</li>'}</ul></div>
+        <div class="sec"><span>What ran</span><ul><li>Read 3 files</li><li>Edited 2 files</li>${S.note ? `<li>Followed your note "${esc(S.note)}" · <span style="color:var(--ok)">212 passed</span></li>` : yes ? '<li><code>bin/rails test</code>, approved 12:17 · <span style="color:var(--ok)">14 passed</span></li>' : '<li>Paused before running tests</li>'}</ul></div>
         <div class="sec"><span>What changed</span><ul><li><code>app/models/order.rb</code> <span class="add">+6</span> <span class="del">−2</span></li><li><code>spec/models/order_spec.rb</code> <span class="add">+3</span> <span class="del">−1</span></li><li style="color:var(--bubble-muted)">Codes are now upcased before lookup; unknown codes raise a clear error.</li></ul></div>
         <div class="sec"><span>Waiting on you</span><div>${shopWait}</div></div>
       </div>
@@ -1026,7 +1182,7 @@ Finished in 0.21 seconds
       </div>
       <div class="card">
         <div class="card-h"><span class="dot" style="background:var(--p-inbox)"></span><b>Inbox</b><span class="task">Nothing new while you were away</span><span class="pill idle">Idle</span></div>
-        <div class="sec"><span>Suggestion</span><div>"recipes" came up 4 times this week. Make it a project?<div class="row" style="margin-top:6px"><button type="button" class="abtn" id="mk-proj">Make "recipes" a project</button></div></div></div>
+        <div class="sec"><span>Suggestion</span><div>"recipes" came up 4 times this week. Make it a project?<div class="row" style="margin-top:6px"><button type="button" class="abtn primary" id="mk-proj">Make "recipes" a project</button><button type="button" class="abtn" id="mk-not">Not now</button></div><div class="own" style="margin-top:6px"><input id="mk-own" type="text" placeholder="Or name it yourself…" aria-label="Name the new project"></div></div></div>
       </div>`;
   }
 
@@ -1052,6 +1208,8 @@ Finished in 0.21 seconds
       const pl = $('#push-later'); if (pl) pl.onclick = () => toast('Okay. shop will keep waiting; it stays in the badge.');
       const rn = $('#run-now'); if (rn) rn.onclick = () => { S.approvedTest = true; togglePanel(true); toast('Approved. Tests passed (14). shop now wants to push.'); };
       $('#mk-proj').onclick = () => toast('Created project "recipes" and moved 4 Inbox items into it.');
+      $('#mk-not').onclick = () => toast('Okay. It will ask again if "recipes" keeps coming up.');
+      $('#mk-own').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.value.trim()) { e.preventDefault(); toast(`Created project "${e.target.value.trim()}" and moved 4 Inbox items into it.`); } });
     }
   }
 
@@ -1070,7 +1228,7 @@ Finished in 0.21 seconds
 
   function startFlow(n, opts = {}) {
     clearTimers();
-    S = { flow: n, step: 0, sent: false, token: Math.random(), vague: !!opts.vague, cx: 600, cy: 400, clock: '12:04' };
+    S = { flow: n, step: 0, sent: false, token: Math.random(), vague: !!opts.vague, cx: 600, cy: 400, clock: '12:04', agent: null, note: null };
     setClock('12:04');
     document.querySelectorAll('.tabs [data-flow]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.flow == n)));
     bubble.hidden = true; rmenu.hidden = true; mbpanel.hidden = true; notifs.innerHTML = ''; $('#away').hidden = true;
@@ -1093,7 +1251,8 @@ Finished in 0.21 seconds
   });
   document.addEventListener('keydown', e => {
     if (e.altKey && e.code === 'Space') { e.preventDefault(); if (!S.away) summon(); }
-    else if (e.key === 'Escape') { if (!rmenu.hidden) rmenu.hidden = true; else if (!mbpanel.hidden) togglePanel(false); else if (!bubble.hidden) dismiss(); }
+    else if ((e.key === '1' || e.key === '2') && !/INPUT|TEXTAREA/.test(e.target.tagName) && $('#b-ask button[data-k]')) { bubble.querySelectorAll('#b-ask button[data-k]')[+e.key - 1].click(); }
+    else if (e.key === 'Escape') { if (!rmenu.hidden) { rmenu.hidden = true; if (!S.sent && $('#b-text')) $('#b-text').focus(); } else if (!mbpanel.hidden) togglePanel(false); else if (!bubble.hidden) dismiss(); }
     else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && $('#a-paste') && !bubble.hidden) { e.preventDefault(); paste(); }
   });
 
