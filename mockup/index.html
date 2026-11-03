@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Superclick Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a flow guide beside a scaled fake macOS desktop; the bubble, notifications and menu-bar panel live inside the desktop. */
+:root {
+  --bg: #EEF0F5;
+  --fg: #151922;
+  --muted: #5A6273;
+  --line: #D6DAE3;
+  --panel: #FFFFFF;
+  --accent: #2F52F0;
+  --accent-soft: #E3E8FF;
+  --ok: #17905F;
+  --warn: #C9711A;
+  --danger: #C8323C;
+
+  /* the fake desktop */
+  --wall-a: #9DB4D9;
+  --wall-b: #D9C4B8;
+  --menubar: rgba(246,247,250,.78);
+  --menubar-fg: #1B1E26;
+  --win: #FBFBFD;
+  --win-fg: #1C2029;
+  --win-line: #E1E4EA;
+  --bubble-bg: rgba(252,252,254,.94);
+  --bubble-fg: #161A22;
+  --bubble-muted: #626A7B;
+  --bubble-line: rgba(20,24,34,.10);
+  --chip-bg: #EDEFF4;
+  --code-bg: #1E1F24;
+  --code-fg: #D7DAE0;
+  --code-dim: #6E7381;
+  --code-kw: #C792EA;
+  --code-str: #A5D6A7;
+  --code-fn: #82AAFF;
+  --code-sel: rgba(84,120,255,.36);
+  --code-add: rgba(46,170,110,.28);
+
+  --p-shop: #17905F;
+  --p-game: #C9711A;
+  --p-inbox: #6F7689;
+
+  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mac: -apple-system, BlinkMacSystemFont, "Instrument Sans", "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1117; --fg: #E6E9F0; --muted: #959CAD; --line: #262B37; --panel: #161A23;
+    --accent: #8197FF; --accent-soft: #232B4D; --ok: #43C08A; --warn: #E59A4E; --danger: #F06A72;
+    --wall-a: #23324F; --wall-b: #4A3A3A;
+    --menubar: rgba(28,30,38,.78); --menubar-fg: #E8EAF0;
+    --win: #22252D; --win-fg: #E3E6EC; --win-line: #343844;
+    --bubble-bg: rgba(34,36,45,.95); --bubble-fg: #ECEEF3; --bubble-muted: #9CA3B4; --bubble-line: rgba(255,255,255,.10);
+    --chip-bg: #30343F;
+    --p-shop: #43C08A; --p-game: #E59A4E; --p-inbox: #9AA1B3;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1117; --fg: #E6E9F0; --muted: #959CAD; --line: #262B37; --panel: #161A23;
+  --accent: #8197FF; --accent-soft: #232B4D; --ok: #43C08A; --warn: #E59A4E; --danger: #F06A72;
+  --wall-a: #23324F; --wall-b: #4A3A3A;
+  --menubar: rgba(28,30,38,.78); --menubar-fg: #E8EAF0;
+  --win: #22252D; --win-fg: #E3E6EC; --win-line: #343844;
+  --bubble-bg: rgba(34,36,45,.95); --bubble-fg: #ECEEF3; --bubble-muted: #9CA3B4; --bubble-line: rgba(255,255,255,.10);
+  --chip-bg: #30343F;
+  --p-shop: #43C08A; --p-game: #E59A4E; --p-inbox: #9AA1B3;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.5 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1480px; margin: 0 auto; display: grid; gap: 18px; }
+
+/* ---------- page header ---------- */
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+.brand h1 { font: 700 28px/1.1 var(--f-display); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.tag { display: inline-block; font: 600 11px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; padding: 5px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); vertical-align: middle; margin-left: 8px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 999px;
+  padding: 7px 14px; font-size: 14px; font-weight: 500;
+}
+.tabs button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.tabs .reset { background: transparent; }
+
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0,1fr); } }
+
+/* ---------- guide ---------- */
+.guide { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; }
+.guide .eyebrow { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.guide h2 { font: 600 20px/1.2 var(--f-display); margin: 6px 0 0; text-wrap: balance; }
+.guide ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+.guide li { counter-increment: s; display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 7px 8px; border-radius: 8px; color: var(--muted); font-size: 14px; line-height: 1.4; }
+.guide li::before {
+  content: counter(s); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 11px/1 var(--f-mono); border: 1px solid var(--line); color: var(--muted);
+}
+.guide li.done { color: var(--fg); }
+.guide li.done::before { content: "✓"; background: var(--ok); border-color: var(--ok); color: #fff; }
+.guide li.now { background: var(--accent-soft); color: var(--fg); font-weight: 500; }
+.guide li.now::before { border-color: var(--accent); color: var(--accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 500; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.note { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+.note kbd, .hint kbd { font: 600 12px/1 var(--f-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; background: var(--bg); color: var(--fg); }
+.log { font: 12px/1.5 var(--f-mono); color: var(--muted); background: var(--bg); border-radius: 8px; padding: 10px; max-height: 170px; overflow: auto; white-space: pre-wrap; }
+.log b { color: var(--fg); font-weight: 600; }
+
+/* ---------- stage + desktop ---------- */
+.stage { position: relative; min-width: 0; }
+.stage-inner { position: relative; width: 100%; overflow: hidden; border-radius: 12px; border: 1px solid var(--line); }
+.desktop {
+  position: absolute; left: 0; top: 0; width: 1180px; height: 740px; transform-origin: 0 0;
+  background: radial-gradient(1200px 700px at 15% 10%, var(--wall-a), transparent 70%), linear-gradient(135deg, var(--wall-a), var(--wall-b));
+  font-family: var(--f-mac); color: var(--win-fg); overflow: hidden; user-select: none;
+}
+.menubar {
+  position: absolute; inset: 0 0 auto 0; height: 28px; display: flex; align-items: center; gap: 18px;
+  padding: 0 14px; background: var(--menubar); backdrop-filter: blur(20px); color: var(--menubar-fg); font-size: 13px; z-index: 50;
+}
+.menubar .app { font-weight: 700; }
+.menubar .spacer { flex: 1; }
+.mb-icon {
+  position: relative; display: grid; place-items: center; width: 28px; height: 22px; border-radius: 5px; border: 0; background: transparent; padding: 0;
+}
+.mb-icon:hover, .mb-icon[aria-expanded="true"] { background: rgba(127,127,127,.22); }
+.mb-icon svg { width: 17px; height: 17px; }
+.badge {
+  position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+  background: var(--danger); color: #fff; font: 700 10px/15px var(--f-mac); text-align: center;
+}
+.clock { font-variant-numeric: tabular-nums; }
+
+.window {
+  position: absolute; background: var(--win); border-radius: 11px; overflow: hidden;
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.25), 0 18px 50px rgba(10,15,30,.28);
+}
+.titlebar { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12.5px; color: var(--bubble-muted); border-bottom: 1px solid var(--win-line); }
+.lights { display: flex; gap: 7px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; background: #FF5F57; }
+.lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+.titlebar .t { flex: 1; text-align: center; margin-right: 50px; }
+
+/* editor window (always dark, like most editors) */
+#win-editor { left: 36px; top: 52px; width: 790px; height: 600px; background: var(--code-bg); color: var(--code-fg); }
+#win-editor .titlebar { background: #2A2B31; color: #9DA2AE; border-color: #33343B; }
+.ed-body { display: grid; grid-template-columns: 170px 1fr; height: calc(100% - 34px); }
+.tree { background: #232429; border-right: 1px solid #33343B; padding: 10px 0; font-size: 12.5px; color: #A9AEBA; }
+.tree div { padding: 3px 14px; white-space: nowrap; }
+.tree .dir { color: #C9CDD6; }
+.tree .open { background: #34363F; color: #fff; }
+.tree .in1 { padding-left: 26px; } .tree .in2 { padding-left: 38px; }
+.ed-main { display: grid; grid-template-rows: 30px 1fr 230px; min-width: 0; }
+.ed-tabs { display: flex; background: #232429; font-size: 12.5px; }
+.ed-tabs span { padding: 7px 14px; color: #8C91A0; border-right: 1px solid #2E2F35; }
+.ed-tabs span.on { background: var(--code-bg); color: #E6E8EE; }
+.code { font: 12.5px/1.65 var(--f-mono); padding: 8px 0; overflow: hidden; }
+.code .ln { display: grid; grid-template-columns: 44px 1fr; white-space: pre; }
+.code .ln > i { font-style: normal; color: var(--code-dim); text-align: right; padding-right: 16px; }
+.code .ln.err { background: rgba(240,80,90,.14); }
+.code .ln.added { background: var(--code-add); transition: background 1.6s; }
+.kw { color: var(--code-kw); } .str { color: var(--code-str); } .fn { color: var(--code-fn); } .cm { color: var(--code-dim); }
+.term { border-top: 1px solid #33343B; background: #19191D; display: grid; grid-template-rows: 26px 1fr; min-height: 0; }
+.term-head { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: #8C91A0; padding: 6px 14px; display: flex; gap: 16px; }
+.term-head b { color: #E6E8EE; font-weight: 600; border-bottom: 1px solid #E6E8EE; }
+.term pre { margin: 0; padding: 4px 14px 10px; font: 12px/1.55 var(--f-mono); color: #C6CAD3; overflow: hidden; white-space: pre; }
+.term .sel { background: var(--code-sel); }
+.term .red { color: #F28B90; }
+.term .grn { color: #8ED6A5; }
+.term .selectable { cursor: text; border-radius: 3px; display: inline-block; }
+.term .selectable.pulse { outline: 1.5px dashed rgba(130,160,255,.75); outline-offset: 2px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { outline-color: rgba(130,160,255,.2); } }
+
+/* browser window */
+#win-browser { left: 70px; top: 50px; width: 820px; height: 620px; }
+.urlbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--win-line); }
+.urlbar .url { flex: 1; background: var(--chip-bg); border-radius: 7px; padding: 5px 12px; font-size: 12.5px; color: var(--bubble-muted); text-align: center; }
+.article { padding: 34px 90px; font-family: Georgia, "Iowan Old Style", serif; color: var(--win-fg); }
+.article .kicker { font: 600 11px/1 var(--f-mac); letter-spacing: .1em; text-transform: uppercase; color: var(--bubble-muted); }
+.article h3 { font-size: 30px; line-height: 1.15; margin: 10px 0 6px; }
+.article .by { font: 13px var(--f-mac); color: var(--bubble-muted); margin-bottom: 22px; }
+.article p { font-size: 16px; line-height: 1.65; margin: 0 0 16px; }
+.article p.selectable { cursor: text; border-radius: 3px; }
+.article p.selectable.pulse { outline: 1.5px dashed var(--accent); outline-offset: 4px; animation: pulse2 1.6s infinite; }
+@keyframes pulse2 { 50% { outline-color: transparent; } }
+.article .sel { background: rgba(84,120,255,.28); }
+
+/* fake cursor */
+#cursor { position: absolute; width: 18px; height: 22px; z-index: 60; pointer-events: none; transition: left .45s cubic-bezier(.3,.7,.3,1), top .45s cubic-bezier(.3,.7,.3,1); }
+
+/* ---------- the bubble ---------- */
+#bubble {
+  position: absolute; width: 420px; z-index: 40; background: var(--bubble-bg); color: var(--bubble-fg);
+  border-radius: 16px; backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 22px 60px rgba(10,15,35,.35);
+  font-size: 13.5px; line-height: 1.45; display: grid; gap: 0; transform-origin: 0 0;
+  animation: pop .16s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes pop { from { transform: scale(.94); opacity: 0; } }
+.b-ctx { display: flex; flex-wrap: wrap; gap: 5px; padding: 12px 12px 0; align-items: center; }
+.cchip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--chip-bg); border-radius: 7px; padding: 3px 4px 3px 8px;
+  font-size: 12px; color: var(--bubble-fg); max-width: 100%;
+}
+.cchip .ico { font-size: 11px; opacity: .8; }
+.cchip.shot img, .cchip.shot .thumb { width: 26px; height: 17px; border-radius: 3px; display: block; background: linear-gradient(135deg, #2A2B31 55%, #19191D 55%); box-shadow: 0 0 0 .5px rgba(0,0,0,.3); }
+.cchip.secret { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--bubble-fg); }
+.cchip .x { border: 0; background: transparent; width: 18px; height: 18px; border-radius: 4px; padding: 0; color: var(--bubble-muted); font-size: 14px; line-height: 1; }
+.cchip .x:hover { background: rgba(127,127,127,.25); color: var(--bubble-fg); }
+.cchip.removed { display: none; }
+.b-ctx .lbl { font-size: 11px; color: var(--bubble-muted); margin-right: 2px; }
+.b-input { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 12px; }
+.b-input textarea {
+  flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--bubble-fg); font: 15px/1.4 var(--f-mac);
+  min-height: 22px; max-height: 80px; padding: 2px 0;
+}
+.b-input textarea::placeholder { color: var(--bubble-muted); }
+.b-input textarea:focus-visible { outline: 0; }
+.ibtn { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--bubble-muted); padding: 0; }
+.ibtn:hover { background: rgba(127,127,127,.18); }
+.ibtn.send { background: var(--accent); color: #fff; }
+.ibtn svg { width: 16px; height: 16px; }
+
+.b-route { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px; font-size: 12px; color: var(--bubble-muted); flex-wrap: wrap; }
+.b-asked { padding: 12px 12px 6px; font-size: 14px; font-weight: 600; }
+.rchip {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bubble-line); background: transparent; border-radius: 999px; padding: 3px 10px 3px 8px;
+  font: 600 12px/1.3 var(--f-mac); color: var(--bubble-fg);
+}
+.rchip:hover { border-color: var(--bubble-muted); }
+.rchip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--p-inbox); }
+.rchip .caret { opacity: .55; font-size: 9px; }
+.rchip.routing { color: var(--bubble-muted); }
+.why { border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--bubble-muted); text-decoration: underline dotted; text-underline-offset: 3px; }
+.trace { margin: 0 12px 10px; padding: 8px 10px; border-radius: 8px; background: var(--chip-bg); font: 11.5px/1.6 var(--f-mono); color: var(--bubble-muted); }
+.trace div { display: grid; grid-template-columns: 16px 152px 1fr; gap: 4px; }
+.trace .hit { color: var(--bubble-fg); font-weight: 600; }
+.trace .skip { opacity: .7; }
+
+.menu { position: absolute; z-index: 45; background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 10px; padding: 5px; width: 230px; backdrop-filter: blur(20px);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 12px 30px rgba(10,15,35,.3); font-size: 13px; }
+.menu .mh { font-size: 11px; color: var(--bubble-muted); padding: 5px 8px 4px; }
+.menu button { width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; }
+.menu button:hover { background: var(--accent); color: #fff; }
+.menu button .dot { width: 8px; height: 8px; border-radius: 50%; }
+.menu button small { margin-left: auto; color: inherit; opacity: .6; font-size: 11px; }
+.menu hr { border: 0; border-top: 1px solid var(--bubble-line); margin: 4px 2px; }
+
+.b-reply { padding: 2px 14px 4px; max-height: 280px; overflow: auto; font-size: 13.5px; }
+.b-reply p { margin: 0 0 8px; }
+.b-reply ul { margin: 0 0 8px; padding-left: 18px; }
+.b-reply code { font: 12px var(--f-mono); background: var(--chip-bg); padding: 1px 4px; border-radius: 4px; }
+.b-reply pre { margin: 0 0 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 8px 10px; font: 12px/1.5 var(--f-mono); white-space: pre-wrap; }
+.b-reply .caret-blink { display: inline-block; width: 7px; height: 14px; background: var(--accent); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.b-reply .saved { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ok); font-weight: 600; margin-bottom: 8px; }
+.status-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--bubble-muted); margin-bottom: 6px; }
+.spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bubble-line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.steps-mini { font: 11.5px/1.7 var(--f-mono); color: var(--bubble-muted); margin: 0 0 8px; }
+.steps-mini .ok { color: var(--ok); }
+
+.b-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 12px; border-top: 1px solid var(--bubble-line); }
+.abtn { border: 1px solid var(--bubble-line); background: transparent; border-radius: 7px; padding: 5px 10px; font: 500 12.5px var(--f-mac); color: var(--bubble-fg); display: inline-flex; gap: 6px; align-items: center; }
+.abtn:hover { background: rgba(127,127,127,.14); }
+.abtn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.abtn kbd { font: 10.5px var(--f-mono); opacity: .7; }
+.ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 12px 12px; font-size: 13px; }
+.ask .q { width: 100%; color: var(--bubble-fg); font-weight: 600; margin-bottom: 2px; }
+
+/* ---------- notifications ---------- */
+#notifs { position: absolute; top: 38px; right: 12px; width: 350px; display: grid; gap: 8px; z-index: 55; }
+.notif {
+  background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 14px; padding: 11px 12px; backdrop-filter: blur(24px);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.2), 0 10px 30px rgba(10,15,35,.25); font-size: 13px; animation: slide .35s cubic-bezier(.2,.9,.3,1);
+  display: grid; grid-template-columns: 34px 1fr; gap: 4px 10px;
+}
+@keyframes slide { from { transform: translateX(380px); } }
+.notif .appi { width: 34px; height: 34px; border-radius: 8px; background: var(--fg); display: grid; place-items: center; grid-row: span 3; }
+.notif .appi svg { width: 20px; height: 20px; color: var(--bg); }
+.notif .nh { display: flex; justify-content: space-between; font-size: 12px; color: var(--bubble-muted); }
+.notif .nt { font-weight: 600; }
+.notif code { font: 11.5px var(--f-mono); background: var(--chip-bg); padding: 1px 4px; border-radius: 4px; }
+.notif .nb { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+.notif .danger { color: var(--danger); font-weight: 600; font-size: 12px; display: inline-flex; gap: 5px; align-items: center; }
+
+/* ---------- menu-bar panel ---------- */
+#mbpanel { position: absolute; top: 34px; right: 120px; width: 400px; z-index: 56; background: var(--bubble-bg); color: var(--bubble-fg); border-radius: 14px;
+  backdrop-filter: blur(24px); box-shadow: 0 0 0 .5px rgba(0,0,0,.22), 0 20px 50px rgba(10,15,35,.32); max-height: 680px; overflow: auto; animation: pop .14s ease-out; }
+.mbp-head { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 16px 6px; }
+.mbp-head h4 { margin: 0; font-size: 15px; }
+.mbp-head span { font-size: 12px; color: var(--bubble-muted); }
+.wya { display: grid; gap: 8px; padding: 6px 10px 12px; }
+.card { border: 1px solid var(--bubble-line); border-radius: 11px; padding: 11px 12px; display: grid; gap: 8px; background: color-mix(in srgb, var(--bubble-bg) 70%, var(--chip-bg)); }
+.card-h { display: flex; align-items: center; gap: 8px; }
+.card-h .dot { width: 9px; height: 9px; border-radius: 50%; }
+.card-h b { font-size: 14px; }
+.card-h .task { color: var(--bubble-muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.pill { font: 600 10.5px/1 var(--f-mac); padding: 4px 7px; border-radius: 999px; letter-spacing: .02em; white-space: nowrap; }
+.pill.wait { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.pill.done { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.pill.idle { background: var(--chip-bg); color: var(--bubble-muted); }
+.sec { display: grid; grid-template-columns: 92px 1fr; gap: 8px; font-size: 12.5px; }
+.sec > span { color: var(--bubble-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.sec ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.sec code { font: 11.5px var(--f-mono); }
+.add { color: var(--ok); font: 11.5px var(--f-mono); } .del { color: var(--danger); font: 11.5px var(--f-mono); }
+.waitbox { border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, transparent); padding: 8px 10px; display: grid; gap: 6px; font-size: 12.5px; }
+.waitbox .danger { color: var(--danger); font-weight: 600; font-size: 11.5px; }
+.card .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.mbp-foot { border-top: 1px solid var(--bubble-line); padding: 8px 16px 10px; display: flex; justify-content: space-between; font-size: 12px; color: var(--bubble-muted); }
+
+/* ---------- session window ---------- */
+#win-session { left: 520px; top: 90px; width: 560px; height: 520px; z-index: 30; color: var(--win-fg); display: grid; grid-template-rows: 34px auto 1fr auto; }
+.sess-meta { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--win-line); font-size: 12.5px; color: var(--bubble-muted); flex-wrap: wrap; }
+.sess-body { overflow: auto; padding: 14px 16px; display: grid; gap: 12px; align-content: start; font-size: 13.5px; }
+.msg { display: grid; gap: 4px; }
+.msg .who { font-size: 11.5px; color: var(--bubble-muted); text-transform: uppercase; letter-spacing: .05em; }
+.msg.user .body { background: var(--accent-soft); color: var(--fg); padding: 8px 10px; border-radius: 10px; justify-self: start; }
+.msg .ctxline { font: 11.5px var(--f-mono); color: var(--bubble-muted); }
+.msg .tool { font: 12px var(--f-mono); color: var(--bubble-muted); background: var(--chip-bg); padding: 6px 8px; border-radius: 6px; }
+.sess-foot { border-top: 1px solid var(--win-line); padding: 10px 16px; font-size: 12.5px; color: var(--bubble-muted); }
+.closex { border: 0; background: transparent; padding: 0; }
+
+/* ---------- overlays ---------- */
+#away { position: absolute; inset: 28px 0 0 0; z-index: 52; background: rgba(8,10,18,.55); backdrop-filter: blur(3px) grayscale(.4); display: grid; place-items: center; color: #fff; text-align: center; }
+#away .big { font: 700 64px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+#away p { margin: 8px 0 0; opacity: .85; font-size: 15px; }
+#toast { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 70; background: rgba(20,22,30,.92); color: #fff; padding: 9px 14px; border-radius: 10px; font-size: 13px; display: flex; gap: 12px; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.3); white-space: nowrap; }
+#toast button { border: 0; background: transparent; color: #9DB0FF; font-weight: 600; padding: 0; }
+.dock { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); height: 52px; padding: 6px 10px; display: flex; gap: 8px; border-radius: 16px; background: var(--menubar); backdrop-filter: blur(20px); box-shadow: 0 0 0 .5px rgba(0,0,0,.15); z-index: 5; }
+.dock i { width: 40px; height: 40px; border-radius: 10px; display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Superclick <span class="tag">M0 · fake data</span></h1>
+      <p>Your AI agents, attached to your cursor. A clickable mockup of flows 1–3. Nothing here talks to a real agent.</p>
+    </div>
+    <nav class="tabs" aria-label="Flows">
+      <button type="button" data-flow="1" aria-pressed="true">1 · Point and ask</button>
+      <button type="button" data-flow="2" aria-pressed="false">2 · Ask without a project</button>
+      <button type="button" data-flow="3" aria-pressed="false">3 · Long task</button>
+      <button type="button" class="reset" id="reset">Restart flow</button>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <aside class="guide" aria-live="polite">
+      <div>
+        <div class="eyebrow" id="g-eyebrow">Flow 1</div>
+        <h2 id="g-title">Point and ask</h2>
+      </div>
+      <ol id="g-steps"></ol>
+      <div class="actions" id="g-actions"></div>
+      <div>
+        <div class="eyebrow" style="margin-bottom:6px">Routing log</div>
+        <div class="log" id="g-log">No requests yet.</div>
+      </div>
+      <div class="note">Press <kbd>⌥</kbd> <kbd>Space</kbd> to summon and <kbd>Esc</kbd> to dismiss, or use the buttons above. Best on a laptop-sized screen.</div>
+    </aside>
+
+    <main class="stage">
+      <div class="stage-inner" id="stage-inner">
+        <div class="desktop" id="desktop" role="application" aria-label="Simulated Mac desktop">
+          <div class="menubar">
+            <span aria-hidden="true">
+              <svg width="13" height="15" viewBox="0 0 17 20" fill="currentColor"><path d="M14.1 10.6c0-2.5 2-3.6 2.1-3.7-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9C3.8 5 2.2 6 1.3 7.5c-1.8 3.2-.5 7.9 1.3 10.5.9 1.3 1.9 2.7 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.5 0 2 .8 3.3.8 1.4 0 2.3-1.3 3.1-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.8-1.1-2.8-4.4zM11.6 3.1c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>
+            </span>
+            <span class="app" id="mb-app">Code</span>
+            <span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span>
+            <span class="spacer"></span>
+            <button type="button" class="mb-icon" id="mb-icon" aria-label="Superclick menu" aria-expanded="false">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 3l11 5.2-4.6 1.4L8.8 14z"/><circle cx="14.5" cy="14.5" r="2.6"/></svg>
+              <span class="badge" id="mb-badge" hidden>2</span>
+            </button>
+            <span aria-hidden="true">
+              <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.2c2.3 0 4.4.9 6 2.4l1.2-1.3A10.4 10.4 0 0 0 8 .4C5.2.4 2.6 1.5.8 3.3L2 4.6a8.6 8.6 0 0 1 6-2.4zm0 3.6c1.4 0 2.6.5 3.5 1.4l1.3-1.3A6.6 6.6 0 0 0 8 4c-1.9 0-3.6.7-4.8 1.9l1.3 1.3c.9-.9 2.1-1.4 3.5-1.4zm0 3.5c-.6 0-1.1.2-1.5.6L8 11.6l1.5-1.7c-.4-.4-.9-.6-1.5-.6z"/></svg>
+            </span>
+            <span class="clock" id="clock">Tue 12:04 PM</span>
+          </div>
+
+          <!-- editor -->
+          <section class="window" id="win-editor" aria-label="Editor window">
+            <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t" id="ed-title">order.rb — shop</span></div>
+            <div class="ed-body">
+              <div class="tree" aria-hidden="true">
+                <div class="dir">▾ SHOP</div>
+                <div class="dir in1">▾ app</div>
+                <div class="dir in2">▸ controllers</div>
+                <div class="dir in2">▾ models</div>
+                <div class="in2" style="padding-left:50px">customer.rb</div>
+                <div class="in2" style="padding-left:50px">discount.rb</div>
+                <div class="in2" style="padding-left:50px">line_item.rb</div>
+                <div class="in2 open" id="tree-order" style="padding-left:50px">order.rb</div>
+                <div class="dir in1">▸ config</div>
+                <div class="dir in1">▸ db</div>
+                <div class="dir in1">▾ spec</div>
+                <div class="dir in2">▾ models</div>
+                <div class="in2" id="tree-spec" style="padding-left:50px">order_spec.rb</div>
+                <div class="in1">Gemfile</div>
+                <div class="in1">README.md</div>
+              </div>
+              <div class="ed-main">
+                <div class="ed-tabs"><span class="on" id="ed-tab">order.rb</span><span id="ed-tab2">discount.rb</span></div>
+                <div class="code" id="code"></div>
+                <div class="term">
+                  <div class="term-head"><span>Problems</span><span>Output</span><b>Terminal</b><span>Ports</span></div>
+                  <pre id="term"></pre>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- browser -->
+          <section class="window" id="win-browser" aria-label="Browser window" hidden>
+            <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="t">Runs that remember — Lowpoly Notes</span></div>
+            <div class="urlbar"><span style="opacity:.5">‹ ›</span><span class="url">🔒 blog.lowpoly.dev/posts/runs-that-remember</span></div>
+            <article class="article">
+              <div class="kicker">Design notes · 9 min read</div>
+              <h3>Runs that remember: meta-progression without the grind</h3>
+              <div class="by">By Mara Okafor · Oct 28, 2026</div>
+              <p>Most roguelites bolt a currency onto death: you lose the run, you keep some coins, you buy a permanent +5% damage. It works, but it turns every run into a chore you pay for in advance.</p>
+              <p class="selectable" id="blog-para">The alternative is to make the world remember instead of the player. A shopkeeper you saved shows up three runs later with a better stock. A bridge you burned stays burned. Progress becomes a story the map tells back to you, and a failed run still changes something you can see on the next attempt.</p>
+              <p>We tried both in our last prototype. Players with the currency system quit after a median of 11 runs. Players with the remembering world kept going for 26, and they described their runs to each other as stories.</p>
+            </article>
+          </section>
+
+          <!-- session window -->
+          <section class="window" id="win-session" aria-label="Session window" hidden>
+            <div class="titlebar"><span class="lights"><button type="button" class="closex" id="sess-close" aria-label="Close session window"><i></i></button><i></i><i></i></span><span class="t" id="sess-title">shop — session</span></div>
+            <div class="sess-meta" id="sess-meta"></div>
+            <div class="sess-body" id="sess-body"></div>
+            <div class="sess-foot">Claude Code · ~/code/shop · this window is a view into the session running in the local daemon</div>
+          </section>
+
+          <div class="dock" aria-hidden="true">
+            <i style="background:#2B79D6"></i><i style="background:#1E9BF0"></i><i style="background:#3C3C44"></i><i style="background:#E5A13A"></i><i style="background:#5BB86A"></i>
+          </div>
+
+          <div id="bubble" role="dialog" aria-label="Superclick bubble" hidden></div>
+          <div class="menu" id="rmenu" hidden></div>
+          <div id="notifs" aria-live="polite"></div>
+          <div id="mbpanel" hidden></div>
+          <div id="away" hidden><div><div class="big" id="away-clock">12:04</div><p>You stepped away. The shop session keeps working in the background.</p></div></div>
+          <div id="toast" hidden></div>
+
+          <svg id="cursor" viewBox="0 0 18 22" aria-hidden="true"><path d="M1 1l0 17 4.3-4.2 3 6.8 2.6-1.1-3-6.6H14z" fill="#111" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const desktop = $('#desktop'), stageInner = $('#stage-inner');
+  const bubble = $('#bubble'), rmenu = $('#rmenu'), notifs = $('#notifs'), mbpanel = $('#mbpanel');
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- scale the desktop to fit ---------- */
+  function fit() {
+    const w = stageInner.clientWidth, s = Math.min(1, w / 1180);
+    desktop.style.transform = `scale(${s})`;
+    stageInner.style.height = (740 * s) + 'px';
+  }
+  new ResizeObserver(fit).observe(stageInner); fit();
+
+  /* ---------- fake data ---------- */
+  const PROJECTS = {
+    shop: { name: 'shop', color: 'var(--p-shop)', path: '~/code/shop', desc: 'Rails storefront: orders, discounts, checkout' },
+    game: { name: 'game idea', color: 'var(--p-game)', path: '~/notes/game-idea', desc: 'Roguelite where the world remembers your runs' },
+    inbox: { name: 'Inbox', color: 'var(--p-inbox)', path: null, desc: 'Everything that does not belong to a project' },
+  };
+  const ORDER_RB = [
+    ['<span class="kw">class</span> Order &lt; ApplicationRecord'],
+    ['  belongs_to <span class="str">:customer</span>'],
+    ['  has_many <span class="str">:line_items</span>, dependent: <span class="str">:destroy</span>'],
+    [''],
+    ['  <span class="kw">def</span> <span class="fn">total</span>'],
+    ['    line_items.sum { |item| item.price * item.quantity }'],
+    ['  <span class="kw">end</span>'],
+    [''],
+    ['  <span class="kw">def</span> <span class="fn">apply_discount!</span>(code)'],
+    ['    discount = Discount.find_by(code: code)', 'fixline'],
+    ['    <span class="kw">self</span>.total_cents -= discount.amount_cents', 'err'],
+    ['    save!'],
+    ['  <span class="kw">end</span>'],
+    ['<span class="kw">end</span>'],
+  ];
+  const ORDER_SPEC = [
+    ['require <span class="str">"rails_helper"</span>'],
+    [''],
+    ['RSpec.describe Order <span class="kw">do</span>'],
+    ['  describe <span class="str">"#apply_discount!"</span> <span class="kw">do</span>'],
+    ['    it <span class="str">"subtracts the discount from the total"</span> <span class="kw">do</span>'],
+    ['      order = create(<span class="str">:order</span>, total_cents: 5_000)'],
+    ['      create(<span class="str">:discount</span>, code: <span class="str">"FALL25"</span>, amount_cents: 1_250)'],
+    ['      order.apply_discount!(<span class="str">"fall25"</span>)', 'err'],
+    ['      expect(order.total_cents).to eq(3_750)'],
+    ['    <span class="kw">end</span>'],
+    ['  <span class="kw">end</span>'],
+    ['<span class="kw">end</span>'],
+  ];
+  const TRACE_1 = `<span class="grn">kirby@mbp shop %</span> bin/rails runner 'Order.last.apply_discount!("FALL25")'
+<span class="selectable" id="sel-trace"><span class="red">app/models/order.rb:11:in \`apply_discount!': undefined method \`amount_cents' for nil (NoMethodError)</span>
+
+    self.total_cents -= discount.amount_cents
+                               ^^^^^^^^^^^^^
+	from (eval):1:in \`&lt;main&gt;'
+	from railties (8.0.1) lib/rails/commands/runner/runner_command.rb:43:in \`eval'
+	from railties (8.0.1) lib/rails/commands/runner/runner_command.rb:43:in \`perform'
+	from thor (1.3.2) lib/thor/command.rb:28:in \`run'
+	from config/initializers/stripe.rb:3 (Stripe.api_key = "sk_live_51NzQx8Ld2Tq9...")
+	from bin/rails:4:in \`&lt;main&gt;'</span>
+<span class="grn">kirby@mbp shop %</span> ▌`;
+  const TRACE_3 = `<span class="grn">kirby@mbp shop %</span> bundle exec rspec spec/models/order_spec.rb
+<span class="selectable" id="sel-trace">F
+
+Failures:
+
+  1) Order#apply_discount! subtracts the discount from the total
+     <span class="red">Failure/Error: self.total_cents -= discount.amount_cents
+     NoMethodError: undefined method \`amount_cents' for nil</span>
+     # ./app/models/order.rb:11:in \`apply_discount!'
+     # ./spec/models/order_spec.rb:8:in \`block (3 levels) in &lt;top (required)&gt;'
+
+Finished in 0.21 seconds
+<span class="red">1 example, 1 failure</span></span>
+<span class="grn">kirby@mbp shop %</span> ▌`;
+
+  function renderCode(lines, opts = {}) {
+    $('#code').innerHTML = lines.map((l, i) => {
+      let cls = l[1] === 'err' && !opts.fixed ? 'err' : '';
+      let html = l[0];
+      if (opts.fixed && l[1] === 'fixline') { html = '    discount = Discount.active.find_by!(code: code.upcase)'; cls = 'added'; }
+      return `<div class="ln ${cls}" data-ln="${i + 1}"><i>${i + 1}</i><span>${html}</span></div>`;
+    }).join('');
+  }
+
+  /* ---------- flows ---------- */
+  const FLOWS = {
+    1: {
+      title: 'Point and ask', scene: 'editor',
+      steps: ['Select the stack trace in the terminal', 'Summon the bubble with ⌥Space', 'Check the context chip, then send', 'See where it went (→ shop)', 'Use the answer: Paste here, Copy, Open session or Reply'],
+      prompt: 'why is this failing?',
+      ctx: [
+        { ico: '◧', text: 'VS Code' },
+        { ico: '▤', text: 'app/models/order.rb' },
+        { ico: '¶', text: '14 lines selected' },
+        { shot: true, text: 'screenshot' },
+        { secret: true, ico: '⚿', text: '1 secret redacted' },
+      ],
+      route: { to: 'shop', step: 2, label: 'Path match', why: 'app/models/order.rb is inside ~/code/shop' },
+      reply: [
+        { p: "`Discount.find_by` returns nil when no row matches, so line 11 calls `amount_cents` on nil. You ran it with `FALL25`, and the only discount row with that code was created as `fall25`, so the lookup misses (codes are compared case-sensitively)." },
+        { p: 'Normalize the code and fail loudly when it does not exist:' },
+        { pre: 'discount = Discount.active.find_by!(code: code.upcase)' },
+        { p: 'Then add a `before_save { self.code = code.upcase }` to Discount so stored codes stay consistent.' },
+      ],
+    },
+    2: {
+      title: 'Ask without a project', scene: 'browser',
+      steps: ['Select the paragraph in the blog post', 'Summon the bubble with ⌥Space', 'Send the request', 'See where it went (→ game idea)', 'Tap the routing chip to reroute it'],
+      prompt: 'save this for the game idea, and summarize it',
+      ctx: [
+        { ico: '◎', text: 'Safari' },
+        { ico: '↗', text: 'blog.lowpoly.dev/posts/runs-that-remember' },
+        { ico: '¶', text: '1 paragraph' },
+        { shot: true, text: 'screenshot' },
+      ],
+      route: { to: 'game', step: 5, label: 'Model classification', why: '"game idea" matches the game idea project (confidence 0.93)' },
+      reply: [
+        { saved: 'Saved to game idea › notes/inspiration.md' },
+        { p: '**Summary:** make the world remember instead of the player.' },
+        { ul: ['Skip the death-currency loop of paying coins for permanent stat bumps.', 'Let saved characters, burned bridges and other choices persist across runs.', 'Every failed run should change something visible on the next attempt.'] },
+        { p: 'This fits the "persistent map" note you added on Oct 21. Want me to link them?' },
+      ],
+    },
+    '2b': {
+      prompt: 'read this later',
+      route: { to: null, step: 6, label: 'Fallback', why: 'No rule matched and the classifier was unsure (game idea 0.48, Inbox 0.41)' },
+      reply: [
+        { saved: 'Added to your reading list' },
+        { p: 'Saved "Runs that remember" (9 min read). I\'ll bring it up when you next open this project.' },
+      ],
+    },
+    3: {
+      title: 'Long task, come back later', scene: 'editor-spec',
+      steps: ['Select the failing test output', 'Summon and ask shop to fix it', 'Walk away while it works', 'Approve the test run from the notification', 'Come back and open the menu-bar badge', 'Read the "while you were away" card'],
+      prompt: 'fix the failing test and run it',
+      ctx: [
+        { ico: '◧', text: 'VS Code' },
+        { ico: '▤', text: 'spec/models/order_spec.rb' },
+        { ico: '›_', text: 'terminal: 1 failure' },
+        { shot: true, text: 'screenshot' },
+      ],
+      route: { to: 'shop', step: 2, label: 'Path match', why: 'spec/models/order_spec.rb is inside ~/code/shop' },
+    },
+  };
+
+  const ROUTE_STEPS = ['Explicit target', 'Path match', 'App or URL rule', 'Recent focus', 'Model classification', 'Fallback'];
+
+  /* ---------- state ---------- */
+  let S;
+  let timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, reduce ? Math.min(ms, 60) : ms); timers.push(t); return t; };
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  let logLines = [];
+
+  function log(line) {
+    logLines.unshift(line);
+    $('#g-log').innerHTML = logLines.join('\n');
+  }
+
+  function setStep(n) { if (n > S.step) { S.step = n; renderGuide(); } }
+
+  function renderGuide() {
+    const f = FLOWS[S.flow];
+    $('#g-eyebrow').textContent = 'Flow ' + S.flow;
+    $('#g-title').textContent = f.title;
+    $('#g-steps').innerHTML = f.steps.map((s, i) => `<li class="${i < S.step ? 'done' : i === S.step ? 'now' : ''}">${esc(s)}</li>`).join('');
+    const a = $('#g-actions'); a.innerHTML = '';
+    const add = (label, fn, primary) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' primary' : ''); b.textContent = label; b.onclick = fn; a.append(b); };
+    if (S.step === 0) add(S.flow == 2 ? 'Select the paragraph' : 'Select the output', selectContext, true);
+    if (S.step === 1) add('Press ⌥Space', summon, true);
+    if (S.step === 2 && bubble.hidden) add('Press ⌥Space', summon, true);
+    if (S.flow == 2 && S.step >= 4) add('Try a vague request', () => startFlow(2, { vague: true }));
+    if (S.flow == 3 && S.step === 2 && S.sent) add('Walk away', walkAway, true);
+    if (S.flow == 3 && S.away && S.approvedTest !== undefined) add('Come back', comeBack, true);
+    if (S.flow == 3 && S.step >= 5) add('Open "while you were away"', () => togglePanel(true), true);
+  }
+
+  /* ---------- scenes ---------- */
+  function setScene(scene) {
+    const ed = scene.startsWith('editor');
+    $('#win-editor').hidden = !ed; $('#win-browser').hidden = ed;
+    $('#mb-app').textContent = ed ? 'Code' : 'Safari';
+    if (ed) {
+      const spec = scene === 'editor-spec';
+      renderCode(spec ? ORDER_SPEC : ORDER_RB);
+      $('#term').innerHTML = spec ? TRACE_3 : TRACE_1;
+      $('#ed-title').textContent = spec ? 'order_spec.rb — shop' : 'order.rb — shop';
+      $('#ed-tab').textContent = spec ? 'order_spec.rb' : 'order.rb';
+      $('#ed-tab2').textContent = spec ? 'order.rb' : 'discount.rb';
+      $('#tree-order').classList.toggle('open', !spec); $('#tree-spec').classList.toggle('open', spec);
+    }
+    const sel = ed ? $('#sel-trace') : $('#blog-para');
+    sel.classList.remove('sel'); sel.classList.add('pulse');
+    sel.onclick = selectContext;
+    moveCursor(ed ? 640 : 760, ed ? 380 : 330);
+  }
+
+  function moveCursor(x, y) { const c = $('#cursor'); c.style.left = x + 'px'; c.style.top = y + 'px'; S.cx = x; S.cy = y; }
+
+  function selectContext() {
+    if (S.step > 0) return;
+    const ed = FLOWS[S.flow].scene.startsWith('editor');
+    const sel = ed ? $('#sel-trace') : $('#blog-para');
+    sel.classList.remove('pulse'); sel.classList.add('sel');
+    if (ed) moveCursor(S.flow == 3 ? 260 : 560, S.flow == 3 ? 600 : 610); else moveCursor(560, 420);
+    setStep(1);
+  }
+
+  /* ---------- bubble ---------- */
+  function placeBubble() {
+    const w = 420;
+    let x = S.cx + 16, y = S.cy + 18;
+    if (x + w > 1170) x = 1170 - w;
+    const h = bubble.offsetHeight || 160;
+    if (y + h > 730) y = Math.max(36, S.cy - h - 12);
+    if (y + h > 730) y = Math.max(36, 730 - h);
+    bubble.style.left = x + 'px'; bubble.style.top = y + 'px';
+  }
+
+  function ctxChips(ctx) {
+    return `<div class="b-ctx" aria-label="Captured context">` + ctx.map((c, i) =>
+      `<span class="cchip${c.shot ? ' shot' : ''}${c.secret ? ' secret' : ''}" data-i="${i}" title="${c.secret ? 'An API key in the selection was replaced with [REDACTED] before sending' : 'Sent with your request'}">` +
+      (c.shot ? '<span class="thumb"></span>' : `<span class="ico" aria-hidden="true">${c.ico}</span>`) +
+      `<span>${esc(c.text)}</span><button type="button" class="x" aria-label="Remove ${esc(c.text)}">×</button></span>`
+    ).join('') + `</div>`;
+  }
+
+  function summon() {
+    if (S.step < 1) selectContext();
+    if (!bubble.hidden && !S.sent) { bubble.querySelector('textarea').focus(); return; }
+    if (S.sent) return;
+    const f = FLOWS[S.flow];
+    const v = S.vague ? FLOWS['2b'] : f;
+    bubble.innerHTML = ctxChips(f.ctx) + `
+      <div class="b-input">
+        <textarea id="b-text" rows="1" placeholder="Ask your agents… (@project to pick one)" aria-label="Request"></textarea>
+        <button type="button" class="ibtn" aria-label="Dictate"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="1.5" width="5" height="9" rx="2.5"/><path d="M3 8a5 5 0 0 0 10 0M8 13v2"/></svg></button>
+        <button type="button" class="ibtn send" id="b-send" aria-label="Send"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button>
+      </div>`;
+    bubble.hidden = false; placeBubble();
+    bubble.querySelectorAll('.cchip .x').forEach(x => x.onclick = e => {
+      const chip = e.target.closest('.cchip'); chip.classList.add('removed');
+      toast(`Removed "${chip.querySelector('span:not(.ico):not(.thumb)').textContent}". It won't be sent.`);
+    });
+    const ta = $('#b-text');
+    ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+    $('#b-send').onclick = send;
+    setStep(2);
+    // type the example prompt so the flow can be clicked straight through; the field stays editable
+    typeInto(ta, v.prompt);
+  }
+
+  async function typeInto(ta, text) {
+    ta.focus();
+    const my = S.token;
+    for (let i = 1; i <= text.length; i++) {
+      if (my !== S.token || S.sent) return;
+      ta.value = text.slice(0, i);
+      await wait(reduce ? 0 : 28);
+    }
+  }
+
+  function dismiss() {
+    bubble.hidden = true; rmenu.hidden = true;
+    if (!S.sent && S.step === 2) { S.step = 1; renderGuide(); }
+  }
+
+  /* ---------- routing ---------- */
+  async function send() {
+    if (S.sent) return;
+    const f = FLOWS[S.flow];
+    const v = S.vague ? FLOWS['2b'] : f;
+    const text = ($('#b-text').value || v.prompt).trim();
+    S.sent = true; S.asked = text;
+    const kept = [...bubble.querySelectorAll('.cchip:not(.removed)')].map(c => c.outerHTML).join('');
+    const explicit = text.match(/@(shop|game|inbox)/i);
+    let route = { ...v.route };
+    if (explicit) { const k = explicit[1].toLowerCase(); route = { to: k, step: 1, label: 'Explicit target', why: `you wrote @${explicit[1]}` }; }
+
+    bubble.innerHTML = `<div class="b-ctx">${kept.replace(/<button[^>]*class="x"[^>]*>×<\/button>/g, '')}</div>
+      <div class="b-asked">${esc(text)}</div>
+      <div class="b-route" id="b-route"><span class="rchip routing"><span class="spinner"></span>Routing…</span></div>
+      <div id="b-trace"></div>
+      <div class="b-reply" id="b-reply"></div>
+      <div id="b-ask"></div>
+      <div class="b-actions" id="b-actions" hidden></div>`;
+    placeBubble();
+    renderGuide();
+    await wait(reduce ? 0 : 520);
+    if (route.to) finishRoute(route); else askFallback(route);
+  }
+
+  function traceHTML(route) {
+    const notes = {
+      1: ['no @project in the text', 'no project picked'],
+      2: S.flow == 2 ? 'no file path or cwd captured' : 'matched ' + PROJECTS.shop.path,
+      3: 'no rule for ' + (S.flow == 2 ? 'blog.lowpoly.dev' : 'VS Code'),
+      4: 'shop, 14 min ago; not a follow-up',
+      5: route.step === 6 ? 'game idea 0.48 · Inbox 0.41' : 'game idea 0.93',
+      6: 'asked you',
+    };
+    return `<div class="trace">` + ROUTE_STEPS.map((name, i) => {
+      const n = i + 1;
+      if (n > route.step) return '';
+      const hit = n === route.step;
+      let note = hit ? route.why : (Array.isArray(notes[n]) ? notes[n][0] : notes[n]);
+      if (route.step === 1 && hit) note = route.why;
+      return `<div class="${hit ? 'hit' : 'skip'}"><span>${hit ? '✓' : '·'}</span><span>${n}. ${name}</span><span>${esc(note)}</span></div>`;
+    }).join('') + `</div>`;
+  }
+
+  function routeChip(key) {
+    const p = PROJECTS[key];
+    return `<button type="button" class="rchip" id="rchip" aria-haspopup="menu" title="Reroute this request"><span class="dot" style="background:${p.color}"></span>→ ${esc(p.name)}<span class="caret">▼</span></button>`;
+  }
+
+  function finishRoute(route, rerouted) {
+    S.route = route.to;
+    $('#b-route').innerHTML = routeChip(route.to) + `<span>${esc(route.label)}</span><button type="button" class="why" id="why">Why?</button>`;
+    $('#rchip').onclick = openReroute;
+    $('#why').onclick = () => { const t = $('#b-trace'); t.innerHTML = t.innerHTML ? '' : traceHTML(route); placeBubble(); };
+    log(`<b>${clock()}</b> "${esc(S.asked)}" → <b>${esc(PROJECTS[route.to].name)}</b>  [${rerouted ? 'reroute by you' : 'step ' + route.step + ': ' + esc(route.label)}] ${esc(route.why)}`);
+    if (!rerouted) {
+      setStep(S.flow == 3 ? 2 : 4);
+      if (S.flow == 3) runLongTask(); else streamReply();
+    }
+  }
+
+  function askFallback(route) {
+    $('#b-route').innerHTML = `<span class="rchip routing"><span class="dot"></span>Not sure where this goes</span>`;
+    $('#b-trace').innerHTML = traceHTML(route);
+    $('#b-ask').innerHTML = `<div class="ask"><span class="q">game idea or Inbox?</span>
+      <button type="button" class="abtn" data-k="game"><span class="rchip-dot"></span>game idea</button>
+      <button type="button" class="abtn primary" data-k="inbox">Inbox</button>
+      <span style="color:var(--bubble-muted);font-size:12px">Defaults to Inbox</span></div>`;
+    placeBubble();
+    $('#b-ask').querySelectorAll('button').forEach(b => b.onclick = () => {
+      $('#b-ask').innerHTML = ''; $('#b-trace').innerHTML = '';
+      const k = b.dataset.k;
+      finishRoute({ ...route, to: k, label: 'You picked', why: `you picked ${PROJECTS[k].name} when asked` });
+      toast(`Rule saved: reading-list requests from blog.lowpoly.dev → ${PROJECTS[k].name}`, true);
+    });
+  }
+
+  function openReroute(e) {
+    e.stopPropagation();
+    if (!rmenu.hidden) { rmenu.hidden = true; return; }
+    rmenu.innerHTML = `<div class="mh">Send this request to…</div>` +
+      Object.entries(PROJECTS).map(([k, p]) => `<button type="button" data-k="${k}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}${k === S.route ? '<small>current</small>' : ''}</button>`).join('') +
+      `<hr><button type="button" data-k="new"><span class="dot" style="background:transparent;border:1px solid currentColor"></span>New project…</button>`;
+    const r = $('#rchip').getBoundingClientRect(), d = desktop.getBoundingClientRect(), s = d.width / 1180;
+    rmenu.style.left = ((r.left - d.left) / s) + 'px'; rmenu.style.top = ((r.bottom - d.top) / s + 4) + 'px';
+    rmenu.hidden = false;
+    rmenu.querySelectorAll('button').forEach(b => b.onclick = () => {
+      rmenu.hidden = true;
+      const k = b.dataset.k;
+      if (k === 'new') { toast('New project: you would name it and pick a folder here (not in this mockup).'); return; }
+      if (k === S.route) return;
+      const from = PROJECTS[S.route].name;
+      finishRoute({ to: k, step: 1, label: 'Rerouted by you', why: `moved from ${from}` }, true);
+      const where = S.flow == 2 ? 'blog.lowpoly.dev/*' : 'VS Code in ~/code/shop';
+      toast(`Moved to ${PROJECTS[k].name}. New rule: ${where} → ${PROJECTS[k].name}`, true);
+      if (S.flow == 2) setStep(5);
+    });
+  }
+
+  /* ---------- replies ---------- */
+  async function streamReply() {
+    const v = S.vague ? FLOWS['2b'] : FLOWS[S.flow];
+    const box = $('#b-reply');
+    const my = S.token;
+    for (const blk of v.reply) {
+      if (my !== S.token) return;
+      if (blk.saved) { box.insertAdjacentHTML('beforeend', `<div class="saved">✓ ${esc(blk.saved)}</div>`); placeBubble(); await wait(reduce ? 0 : 200); continue; }
+      const tag = blk.pre ? 'pre' : blk.ul ? 'ul' : 'p';
+      const el = document.createElement(tag); box.append(el);
+      const items = blk.ul || [blk.pre || blk.p];
+      for (const item of items) {
+        const target = blk.ul ? el.appendChild(document.createElement('li')) : el;
+        const words = item.split(/(\s+)/);
+        let acc = '';
+        for (const w of words) {
+          if (my !== S.token) return;
+          acc += w;
+          target.innerHTML = (blk.pre ? esc(acc) : md(acc)) + '<span class="caret-blink"></span>';
+          box.scrollTop = box.scrollHeight;
+          if (w.trim()) await wait(reduce ? 0 : 22);
+        }
+        target.innerHTML = blk.pre ? esc(acc) : md(acc);
+      }
+      placeBubble();
+    }
+    showActions();
+  }
+
+  function showActions() {
+    const a = $('#b-actions'); a.hidden = false;
+    const canPaste = S.flow == 1;
+    a.innerHTML = (canPaste ? `<button type="button" class="abtn primary" id="a-paste">Paste here <kbd>⌘↩</kbd></button>` : '') +
+      `<button type="button" class="abtn${canPaste ? '' : ' primary'}" id="a-copy">Copy</button>
+       <button type="button" class="abtn" id="a-open">Open session</button>
+       <button type="button" class="abtn" id="a-reply">Reply</button>`;
+    placeBubble();
+    if ($('#a-paste')) $('#a-paste').onclick = paste;
+    $('#a-copy').onclick = () => { done5(); toast('Copied the answer'); };
+    $('#a-open').onclick = () => { done5(); openSession(); };
+    $('#a-reply').onclick = () => { done5(); replyBox(); };
+  }
+  function done5() { if (S.flow == 1) setStep(5); }
+
+  function paste() {
+    done5();
+    renderCode(ORDER_RB, { fixed: true });
+    bubble.hidden = true;
+    toast('Pasted into order.rb line 10', false, () => { renderCode(ORDER_RB); });
+    later(() => { const l = $('#code .added'); if (l) l.classList.remove('added'); }, 2400);
+  }
+
+  function replyBox() {
+    if ($('#b-follow')) { $('#b-follow').focus(); return; }
+    $('#b-actions').insertAdjacentHTML('beforebegin', `<div class="b-input" style="border-top:1px solid var(--bubble-line)"><textarea id="b-follow" rows="1" placeholder="Reply in ${esc(PROJECTS[S.route].name)}…" aria-label="Reply"></textarea><button type="button" class="ibtn send" id="b-fsend" aria-label="Send reply"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></div>`);
+    placeBubble();
+    const ta = $('#b-follow'); ta.focus();
+    const go = () => {
+      const t = ta.value.trim() || 'add a test for the lowercase code too';
+      log(`<b>${clock()}</b> "${esc(t)}" → <b>${esc(PROJECTS[S.route].name)}</b>  [step 4: Recent focus] follow-up within 1 min of the last request`);
+      toast(`Sent to ${PROJECTS[S.route].name} as a follow-up (recent focus)`);
+      ta.value = '';
+    };
+    ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } });
+    $('#b-fsend').onclick = go;
+  }
+
+  function openSession() {
+    const p = PROJECTS[S.route];
+    $('#win-session').hidden = false;
+    $('#sess-title').textContent = `${p.name} — session`;
+    $('#sess-meta').innerHTML = `<span class="rchip" style="pointer-events:none"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</span><span>${esc(p.desc)}</span>`;
+    const f = FLOWS[S.flow];
+    const v = S.vague ? FLOWS['2b'] : f;
+    const replyText = (v.reply || []).map(b => b.saved ? '✓ ' + b.saved : b.ul ? b.ul.map(x => '• ' + x).join('\n') : b.pre || b.p).join('\n\n');
+    $('#sess-body').innerHTML = `
+      <div class="msg"><span class="who">Earlier today</span><div class="tool">Session summary: ${S.route === 'shop' ? 'Working on discount codes. Added Discount model and seeds yesterday; checkout totals still use cents.' : S.route === 'game' ? 'Collecting ideas for a roguelite where the map remembers past runs. 14 notes.' : 'Loose ends: reading list, two recipe links, a reminder about the dentist.'}</div></div>
+      <div class="msg user"><span class="who">You · ${clock()}</span><div class="body">${esc(S.asked)}</div><span class="ctxline">context: ${f.ctx.map(c => c.text).join(' · ')}</span></div>
+      <div class="msg"><span class="who">Claude Code</span><div style="white-space:pre-wrap">${md(replyText)}</div></div>`;
+  }
+
+  /* ---------- flow 3: long task ---------- */
+  async function runLongTask() {
+    const box = $('#b-reply');
+    box.innerHTML = `<div class="status-row"><span class="spinner"></span><span id="lt-status">Working in shop…</span></div><div class="steps-mini" id="lt-steps"></div>
+      <p style="color:var(--bubble-muted)">This can take a while. You can close the bubble and walk away; I'll notify you if shop needs you.</p>`;
+    placeBubble();
+    const steps = ['Read spec/models/order_spec.rb', 'Read app/models/order.rb', 'Read app/models/discount.rb', 'Edit app/models/order.rb (+6 −2)', 'Edit spec/models/order_spec.rb (+3 −1)'];
+    const my = S.token;
+    for (let i = 0; i < steps.length; i++) {
+      await wait(reduce ? 0 : 520);
+      if (my !== S.token) return;
+      $('#lt-steps').insertAdjacentHTML('beforeend', `<div><span class="ok">✓</span> ${esc(steps[i])}</div>`);
+      placeBubble();
+    }
+    $('#lt-status').textContent = 'Waiting to run the tests…';
+    S.readyToAsk = true;
+    if (S.away) later(askApproval, 900);
+  }
+
+  function walkAway() {
+    if (S.away) return;
+    S.away = true; bubble.hidden = true; rmenu.hidden = true;
+    $('#away').hidden = false;
+    setStep(3);
+    let m = 4;
+    const tick = () => { m += 1; if (m > 31) return; $('#away-clock').textContent = '12:' + String(m).padStart(2, '0'); setClock('12:' + String(m).padStart(2, '0')); later(tick, 55); };
+    tick();
+    if (S.readyToAsk) later(askApproval, 1100);
+  }
+
+  function askApproval() {
+    if (S.asked3) return; S.asked3 = true;
+    const n = document.createElement('div'); n.className = 'notif'; n.id = 'n-approve';
+    n.innerHTML = `<span class="appi"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 3l11 5.2-4.6 1.4L8.8 14z"/><circle cx="14.5" cy="14.5" r="2.6"/></svg></span>
+      <div class="nh"><span>SUPERCLICK</span><span>now</span></div>
+      <div class="nt">shop needs approval</div>
+      <div>Run <code>bin/rails test spec/models/order_spec.rb</code></div>
+      <div></div><div class="nb"><button type="button" class="abtn primary" id="n-yes">Approve</button><button type="button" class="abtn" id="n-no">Deny</button></div>`;
+    notifs.prepend(n);
+    $('#n-yes').onclick = () => decide(true);
+    $('#n-no').onclick = () => decide(false);
+  }
+
+  function decide(yes) {
+    S.approvedTest = yes;
+    setStep(4);
+    const n = $('#n-approve');
+    n.querySelector('.nb').innerHTML = yes ? `<span style="color:var(--ok);font-weight:600">✓ Approved. Running tests…</span>` : `<span style="color:var(--bubble-muted)">Denied. shop will wait for you.</span>`;
+    log(`<b>${clock()}</b> shop: ${yes ? 'approved' : 'denied'} "bin/rails test spec/models/order_spec.rb" from a notification`);
+    later(() => { n.remove(); }, 1800);
+    if (yes) later(() => {
+      const d = document.createElement('div'); d.className = 'notif';
+      d.innerHTML = `<span class="appi"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 3l11 5.2-4.6 1.4L8.8 14z"/><circle cx="14.5" cy="14.5" r="2.6"/></svg></span>
+        <div class="nh"><span>SUPERCLICK</span><span>now</span></div>
+        <div class="nt">shop fixed the test and wants to push</div>
+        <div><code>git push origin main</code></div>
+        <div></div><div class="nb"><span class="danger">⚠ Dangerous action. Approve it on your desktop.</span></div>`;
+      notifs.prepend(d);
+      later(() => d.remove(), 4200);
+    }, 2200);
+    renderGuide();
+  }
+
+  function comeBack() {
+    S.away = false; $('#away').hidden = true; notifs.innerHTML = '';
+    $('#mb-badge').hidden = false; $('#mb-badge').textContent = S.approvedTest ? '1' : '1';
+    moveCursor(1010, 16);
+    setStep(5);
+    toast('Welcome back. The menu-bar icon has something for you.');
+  }
+
+  function wyaCards() {
+    const yes = S.approvedTest;
+    const shopWait = yes
+      ? `<div class="waitbox"><div><b>Push 1 commit to origin/main</b></div><div><code>git push origin main</code> · "Normalize discount codes before lookup"</div><div class="danger">⚠ Dangerous: needs desktop approval</div><div class="row" id="push-row"><button type="button" class="abtn primary" id="push-review">Review diff and push</button><button type="button" class="abtn" id="push-later">Not now</button></div></div>`
+      : `<div class="waitbox"><div><b>Run the tests</b></div><div><code>bin/rails test spec/models/order_spec.rb</code> · you denied this from a notification at 12:17</div><div class="row"><button type="button" class="abtn primary" id="run-now">Approve and run</button><button type="button" class="abtn">Open session</button></div></div>`;
+    return `
+      <div class="card">
+        <div class="card-h"><span class="dot" style="background:var(--p-shop)"></span><b>shop</b><span class="task">Fix the failing order_spec test</span><span class="pill wait">Waiting on you</span></div>
+        <div class="sec"><span>What ran</span><ul><li>Read 3 files</li><li>Edited 2 files</li>${yes ? '<li><code>bin/rails test</code>, approved 12:17 · <span style="color:var(--ok)">14 passed</span></li>' : '<li>Paused before running tests</li>'}</ul></div>
+        <div class="sec"><span>What changed</span><ul><li><code>app/models/order.rb</code> <span class="add">+6</span> <span class="del">−2</span></li><li><code>spec/models/order_spec.rb</code> <span class="add">+3</span> <span class="del">−1</span></li><li style="color:var(--bubble-muted)">Codes are now upcased before lookup; unknown codes raise a clear error.</li></ul></div>
+        <div class="sec"><span>Waiting on you</span><div>${shopWait}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="dot" style="background:var(--p-game)"></span><b>game idea</b><span class="task">Collecting design notes</span><span class="pill done">Done</span></div>
+        <div class="sec"><span>What ran</span><ul><li>Saved 1 note from blog.lowpoly.dev</li></ul></div>
+        <div class="sec"><span>What changed</span><ul><li><code>notes/inspiration.md</code> <span class="add">+9</span></li></ul></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="dot" style="background:var(--p-inbox)"></span><b>Inbox</b><span class="task">Nothing new while you were away</span><span class="pill idle">Idle</span></div>
+        <div class="sec"><span>Suggestion</span><div>"recipes" came up 4 times this week. Make it a project?<div class="row" style="margin-top:6px"><button type="button" class="abtn" id="mk-proj">Make "recipes" a project</button></div></div></div>
+      </div>`;
+  }
+
+  function togglePanel(force) {
+    const open = force === true ? true : mbpanel.hidden;
+    if (!open) { mbpanel.hidden = true; $('#mb-icon').setAttribute('aria-expanded', 'false'); return; }
+    const away = S.flow == 3 && S.step >= 5;
+    mbpanel.innerHTML = away
+      ? `<div class="mbp-head"><h4>While you were away</h4><span>12:04 – 12:31 PM</span></div><div class="wya">${wyaCards()}</div><div class="mbp-foot"><span>3 sessions · daemon running</span><span>⌥Space to summon</span></div>`
+      : `<div class="mbp-head"><h4>Sessions</h4><span>daemon running</span></div><div class="wya">
+          ${Object.values(PROJECTS).map(p => `<div class="card"><div class="card-h"><span class="dot" style="background:${p.color}"></span><b>${esc(p.name)}</b><span class="task">${esc(p.desc)}</span><span class="pill idle">Idle</span></div></div>`).join('')}
+        </div><div class="mbp-foot"><span>Nothing waiting on you</span><span>⌥Space to summon</span></div>`;
+    mbpanel.hidden = false; $('#mb-icon').setAttribute('aria-expanded', 'true');
+    if (away) {
+      $('#mb-badge').hidden = true;
+      setStep(6);
+      const pr = $('#push-review');
+      if (pr) pr.onclick = () => {
+        $('#push-row').innerHTML = `<div style="width:100%;font:11.5px/1.55 var(--f-mono);background:var(--code-bg);color:var(--code-fg);border-radius:6px;padding:6px 8px;white-space:pre"><span style="color:#F28B90">-    discount = Discount.find_by(code: code)</span>\n<span style="color:#8ED6A5">+    discount = Discount.active.find_by!(code: code.upcase)</span></div><button type="button" class="abtn primary" id="push-go">Push to origin/main</button><button type="button" class="abtn" id="push-cancel">Cancel</button>`;
+        $('#push-go').onclick = () => { $('#push-row').closest('.waitbox').innerHTML = '<div style="color:var(--ok);font-weight:600">✓ Pushed 1 commit to origin/main</div>'; const pill = mbpanel.querySelector('.pill.wait'); pill.className = 'pill done'; pill.textContent = 'Done'; log(`<b>12:32</b> shop: you approved "git push origin main" on the desktop`); };
+        $('#push-cancel').onclick = () => togglePanel(true);
+      };
+      const pl = $('#push-later'); if (pl) pl.onclick = () => toast('Okay. shop will keep waiting; it stays in the badge.');
+      const rn = $('#run-now'); if (rn) rn.onclick = () => { S.approvedTest = true; togglePanel(true); toast('Approved. Tests passed (14). shop now wants to push.'); };
+      $('#mk-proj').onclick = () => toast('Created project "recipes" and moved 4 Inbox items into it.');
+    }
+  }
+
+  /* ---------- misc ---------- */
+  function clock() { return S.clock; }
+  function setClock(t) { S.clock = t; const h = t; $('#clock').textContent = 'Tue ' + h + ' PM'; }
+
+  let toastT;
+  function toast(msg, undo, onUndo) {
+    const t = $('#toast');
+    t.innerHTML = `<span>${esc(msg)}</span>` + (undo || onUndo ? `<button type="button" id="t-undo">Undo</button>` : '');
+    t.hidden = false;
+    if ($('#t-undo')) $('#t-undo').onclick = () => { t.hidden = true; if (onUndo) onUndo(); };
+    clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3600);
+  }
+
+  function startFlow(n, opts = {}) {
+    clearTimers();
+    S = { flow: n, step: 0, sent: false, token: Math.random(), vague: !!opts.vague, cx: 600, cy: 400, clock: '12:04' };
+    setClock('12:04');
+    document.querySelectorAll('.tabs [data-flow]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.flow == n)));
+    bubble.hidden = true; rmenu.hidden = true; mbpanel.hidden = true; notifs.innerHTML = ''; $('#away').hidden = true;
+    $('#win-session').hidden = true; $('#mb-badge').hidden = true; $('#toast').hidden = true;
+    $('#mb-icon').setAttribute('aria-expanded', 'false');
+    setScene(FLOWS[n].scene);
+    if (opts.vague) { selectContext(); setStep(4); S.step = 4; }
+    renderGuide();
+    if (opts.vague) { S.step = 1; summon(); S.step = 4; renderGuide(); }
+  }
+
+  document.querySelectorAll('.tabs [data-flow]').forEach(b => b.onclick = () => startFlow(+b.dataset.flow));
+  $('#reset').onclick = () => startFlow(S.flow);
+  $('#mb-icon').onclick = e => { e.stopPropagation(); togglePanel(); };
+  $('#sess-close').onclick = () => $('#win-session').hidden = true;
+  desktop.addEventListener('click', e => {
+    if (!e.target.isConnected) return; // the clicked control was re-rendered inside a panel
+    if (!rmenu.hidden && !rmenu.contains(e.target)) rmenu.hidden = true;
+    if (!mbpanel.hidden && !mbpanel.contains(e.target) && !$('#mb-icon').contains(e.target)) togglePanel(false);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.altKey && e.code === 'Space') { e.preventDefault(); if (!S.away) summon(); }
+    else if (e.key === 'Escape') { if (!rmenu.hidden) rmenu.hidden = true; else if (!mbpanel.hidden) togglePanel(false); else if (!bubble.hidden) dismiss(); }
+    else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && $('#a-paste') && !bubble.hidden) { e.preventDefault(); paste(); }
+  });
+
+  startFlow(1);
+})();
+</script>
+</body>
+</html>
