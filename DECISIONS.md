@@ -43,9 +43,14 @@ Kirby's feedback on M0, applied to the mockup:
 - **Four chip styles to compare, switchable in the mockup's left panel:** Pills (default), Inline (a single breadcrumb line, remove on hover), Tiles (attachment cards with a second line of detail), and Stack (overlapping icons with a count, click to expand). Not decided yet; Kirby to pick.
 - **The mockup no longer auto-focuses text fields on touch screens.** On a phone the keyboard kept opening and scrolling the page. This only affects the demo, not the Mac app.
 
-## Pending
+## 2026-11-03 · Mockup round 4: compact pills with overflow stack, pointer-shaped glow, engraved agent marks
 
-- **Context chip style:** Pills, Inline, Tiles or Stack. Stills are in the project files under `superclick/chips/`.
+- **Context chips: Pills, made compact** (20px tall, 14px icons, roughly the size of the old inline style). Kirby picked this over Inline, Tiles and Stack; the style switcher is gone.
+- **Chips stay on one line.** Items that don't fit tuck into a stack of overlapping icons with a count ("+2") at the end; click it to show everything, "Show less" to collapse. Items tuck from the end, and the "secret redacted" chip never tucks, so what gets redacted is always visible.
+- **The cursor glow is now an outline in the shape of the pointer**, rippling out from the tip in two echoes, instead of a circle. Still drawn in our own overlay; the system cursor is untouched. Reduce Motion shows a single still outline.
+- **Agents get engraved marks:** each glyph is cut into a small metal-tinted tile (copper for Claude Code, red for OpenClaw, steel for Auto), with a highlight under each cut. The glyphs are our own generic shapes (a spark, three claw slashes, a split arrow), not the vendors' logos. In the real app, each adapter can supply its own icon, and we'd confirm brand-use rules before showing official logos.
+
+## Pending
 
 - **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.
 
