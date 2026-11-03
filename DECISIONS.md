@@ -36,7 +36,16 @@ Kirby's feedback on M0, applied to the mockup:
 - **Design rule: whenever the model offers a choice, the user can also type their own answer.** Applied to the "game idea or Inbox?" fallback, the reroute menu (type a project or a new name), approval notifications (Reply… next to Approve and Deny), and the Inbox "make it a project?" suggestion. Typing a name that doesn't exist creates the project.
 - **Agents are per project, overridable per request.** Each project session has a default agent (Claude Code for now). The coordinator picks the project; the project picks the agent. The bubble footer shows the agent and lets you override it for one request, or you can type `/openclaw` in the request. The routing chip and log always show both, e.g. "→ shop · Claude Code". Changing a project's default agent belongs in settings (not mocked).
 
+## 2026-11-03 · Mockup round 3: roomier bubble, four context-chip styles
+
+- **More breathing room:** the bubble is 460px wide with a 16px corner radius and roughly 4px more padding throughout (chips, input, reply, footer).
+- **Context chips get a tinted icon per kind** (app, file, selection, URL, terminal, secret, screenshot thumbnail) so items scan by shape and color, not only by text.
+- **Four chip styles to compare, switchable in the mockup's left panel:** Pills (default), Inline (a single breadcrumb line, remove on hover), Tiles (attachment cards with a second line of detail), and Stack (overlapping icons with a count, click to expand). Not decided yet; Kirby to pick.
+- **The mockup no longer auto-focuses text fields on touch screens.** On a phone the keyboard kept opening and scrolling the page. This only affects the demo, not the Mac app.
+
 ## Pending
+
+- **Context chip style:** Pills, Inline, Tiles or Stack. Stills are in the project files under `superclick/chips/`.
 
 - **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.
 

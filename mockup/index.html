@@ -229,7 +229,7 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
   box-shadow: inset 0 0 0 1px var(--glass-edge), inset 0 1px 0 var(--glass-hi), 0 0 0 .5px rgba(0,0,0,.38), 0 24px 64px -8px rgba(5,8,20,.45), 0 4px 14px rgba(5,8,20,.16);
 }
 #bubble {
-  position: absolute; width: 440px; z-index: 40; border-radius: 14px;
+  position: absolute; width: 460px; z-index: 40; border-radius: 16px;
   font: 13px/1.45 var(--f-mac); letter-spacing: -.003em; display: grid;
   animation: pop .18s cubic-bezier(.2,.9,.3,1.15);
 }
@@ -241,7 +241,7 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
-#bubble::before { inset: -1.5px; border-radius: 15.5px; padding: 1.5px; }
+#bubble::before { inset: -1.5px; border-radius: 17.5px; padding: 1.5px; }
 #bubble::after { inset: -16px; border-radius: 30px; padding: 16px; filter: blur(9px); }
 #bubble.glow::before, #bubble.glow::after { animation: glow 1.5s cubic-bezier(.3,.6,.3,1) forwards; }
 #bubble.glow-static::before { opacity: 1; }
@@ -256,18 +256,77 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .cring.still { animation: none; opacity: .9; transform: scale(.8); }
 @keyframes ring { 0% { transform: scale(.3); opacity: 0; --glow-a: 0deg; } 20% { opacity: 1; } 100% { transform: scale(1.5); opacity: 0; --glow-a: 200deg; } }
 
-.b-ctx { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 10px 0; align-items: center; }
-.cchip {
-  display: inline-flex; align-items: center; gap: 5px; background: var(--chip-glass); border: 1px solid var(--bubble-line); border-radius: 6px; padding: 1px 2px 1px 7px;
-  font-size: 11.5px; color: var(--bubble-fg); max-width: 100%; height: 22px;
+.b-ctx { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 14px 2px; align-items: center; }
+.ctx-sum { display: none; }
+/* shared chip parts */
+.cchip { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; font-size: 12px; color: var(--bubble-fg); position: relative; }
+.cchip .ci {
+  flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center;
+  font: 700 8.5px/1 var(--f-mac); letter-spacing: -.02em; color: #fff; background: var(--ci, #7A8194);
 }
-.cchip .ico { font-size: 10.5px; color: var(--bubble-muted); }
-.cchip.shot .thumb { width: 22px; height: 14px; border-radius: 3px; display: block; background: linear-gradient(135deg, #2A2B31 55%, #19191D 55%); box-shadow: 0 0 0 .5px rgba(0,0,0,.3); }
-.cchip.secret { background: color-mix(in srgb, var(--warn) 14%, transparent); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
-.cchip .x { border: 0; background: transparent; width: 16px; height: 16px; border-radius: 4px; padding: 0; color: var(--bubble-muted); font-size: 13px; line-height: 1; opacity: .7; }
+.cchip.k-app { --ci: linear-gradient(135deg, #4C8DF6, #2F62D8); }
+.cchip.k-file { --ci: linear-gradient(135deg, #8A93A8, #5F6779); font-size: 10px; }
+.cchip.k-sel { --ci: linear-gradient(135deg, #A08CF0, #6E5AD8); }
+.cchip.k-url { --ci: linear-gradient(135deg, #36B6C9, #1E8297); }
+.cchip.k-term { --ci: linear-gradient(135deg, #3E4250, #23262F); }
+.cchip.k-secret { --ci: linear-gradient(135deg, #F0B04B, #D2832A); }
+#bubble[data-chips] .cchip.shot .ci { background: none; width: auto; }
+.cchip .thumb { width: 26px; height: 18px; border-radius: 4px; display: block; background: linear-gradient(160deg, #3A3C44 0 28%, #22232A 28% 100%); box-shadow: 0 0 0 .5px rgba(0,0,0,.4), inset 0 0 0 .5px rgba(255,255,255,.12); }
+.cchip .ct { display: grid; min-width: 0; }
+.cchip .cl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cchip .cs { display: none; font-size: 11px; color: var(--bubble-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cchip .x { border: 0; background: transparent; width: 16px; height: 16px; border-radius: 4px; padding: 0; color: var(--bubble-muted); font-size: 13px; line-height: 1; opacity: .7; flex: none; }
 .cchip .x:hover { background: var(--chip-glass); color: var(--bubble-fg); opacity: 1; }
 .cchip.removed { display: none; }
-.b-input { display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px 14px; }
+
+/* 1 · pills: tinted icon + label, hairline capsule */
+#bubble[data-chips="pill"] .cchip { height: 26px; padding: 0 3px 0 4px; border-radius: 8px; background: var(--chip-glass); border: 1px solid var(--bubble-line); }
+#bubble[data-chips="pill"] .cchip .ci { width: 18px; height: 18px; }
+#bubble[data-chips="pill"] .cchip.secret { background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+
+/* 2 · inline: one quiet breadcrumb line */
+#bubble[data-chips="inline"] .b-ctx { gap: 0; font-size: 12px; color: var(--bubble-muted); }
+#bubble[data-chips="inline"] .cchip { gap: 5px; padding: 2px 4px; border-radius: 5px; color: var(--bubble-muted); }
+#bubble[data-chips="inline"] .cchip + .cchip::before { content: "·"; position: absolute; left: -3px; color: var(--bubble-muted); opacity: .6; }
+#bubble[data-chips="inline"] .cchip + .cchip { margin-left: 6px; }
+#bubble[data-chips="inline"] .cchip .ci { width: 14px; height: 14px; border-radius: 4px; font-size: 7px; }
+#bubble[data-chips="inline"] .cchip .thumb { width: 18px; height: 12px; border-radius: 3px; }
+#bubble[data-chips="inline"] .cchip:hover { background: var(--chip-glass); color: var(--bubble-fg); }
+#bubble[data-chips="inline"] .cchip .x { width: 0; opacity: 0; overflow: hidden; transition: width .12s, opacity .12s; }
+#bubble[data-chips="inline"] .cchip:hover .x, #bubble[data-chips="inline"] .cchip:focus-within .x { width: 14px; opacity: .8; }
+#bubble[data-chips="inline"] .cchip.secret { color: var(--warn); }
+
+/* 3 · tiles: attachment cards with a second line */
+#bubble[data-chips="tiles"] .b-ctx { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 6px; scrollbar-width: none;
+  -webkit-mask: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
+#bubble[data-chips="tiles"] .cchip { flex: none; height: 46px; max-width: 168px; padding: 0 10px 0 7px; border-radius: 11px; gap: 9px;
+  background: linear-gradient(180deg, var(--glass-hi), transparent 140%), var(--chip-glass); border: 1px solid var(--bubble-line); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+#bubble[data-chips="tiles"] .cchip .ci { width: 30px; height: 30px; border-radius: 8px; font-size: 11px; }
+#bubble[data-chips="tiles"] .cchip.k-file .ci { font-size: 14px; }
+#bubble[data-chips="tiles"] .cchip .thumb { width: 44px; height: 30px; border-radius: 6px; }
+#bubble[data-chips="tiles"] .cchip .cl { font-weight: 600; font-size: 12px; }
+#bubble[data-chips="tiles"] .cchip .cs { display: block; }
+#bubble[data-chips="tiles"] .cchip .x { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--bubble-fg); color: var(--glass-a); opacity: 0; font-size: 12px; }
+#bubble[data-chips="tiles"] .cchip:hover .x, #bubble[data-chips="tiles"] .cchip:focus-within .x { opacity: 1; }
+#bubble[data-chips="tiles"] .b-ctx { padding-top: 16px; }
+#bubble[data-chips="tiles"] .cchip.secret { border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+
+/* 4 · stack: overlapping icons + count; click to expand */
+#bubble[data-chips="stack"] .b-ctx:not(.open) { gap: 0; cursor: pointer; }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .cchip { width: 24px; height: 24px; padding: 0; margin-right: -7px; border-radius: 7px; justify-content: center; box-shadow: 0 0 0 2px var(--glass-a); background: var(--glass-a); }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .cchip .ci { width: 24px; height: 24px; border-radius: 7px; }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .cchip .thumb { width: 24px; height: 24px; border-radius: 7px; }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .cchip .ct, #bubble[data-chips="stack"] .b-ctx:not(.open) .cchip .x { display: none; }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .ctx-sum { display: inline-flex; order: 99; margin-left: 16px; font-size: 12px; color: var(--bubble-muted); gap: 6px; align-items: center; }
+#bubble[data-chips="stack"] .b-ctx:not(.open) .ctx-sum::after { content: "Show"; color: var(--accent); font-weight: 500; }
+#bubble[data-chips="stack"] .b-ctx:not(.open):hover .cchip { margin-right: 2px; transition: margin .15s; }
+#bubble[data-chips="stack"] .b-ctx.open .cchip { height: 26px; padding: 0 3px 0 4px; border-radius: 8px; background: var(--chip-glass); border: 1px solid var(--bubble-line); }
+
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.seg button { border: 0; background: transparent; border-radius: 7px; padding: 6px 4px; font-size: 13px; color: var(--muted); }
+.seg button[aria-checked="true"] { background: var(--panel); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 500; }
+.seg-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.b-input { display: flex; align-items: center; gap: 6px; padding: 12px 12px 14px 18px; }
 .b-input textarea {
   flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--bubble-fg); font: 400 16px/1.4 var(--f-mac); letter-spacing: -.01em;
   min-height: 24px; max-height: 80px; padding: 3px 0;
@@ -279,7 +338,7 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .ibtn.send { color: var(--accent); }
 .ibtn svg { width: 15px; height: 15px; }
 
-.b-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 6px; border-top: 1px solid var(--bubble-line); font-size: 11.5px; color: var(--bubble-muted); }
+.b-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px 8px 10px; border-top: 1px solid var(--bubble-line); font-size: 11.5px; color: var(--bubble-muted); }
 .agent { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 3px 7px 3px 4px; border-radius: 6px; font: 500 12px var(--f-mac); color: var(--bubble-fg); }
 .agent:hover, .agent[aria-expanded="true"] { background: var(--chip-glass); }
 .agent .mark { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; color: #fff; font: 700 9px/1 var(--f-mac); }
@@ -291,8 +350,8 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .keys span { display: inline-flex; gap: 5px; align-items: center; }
 .k { font: 500 10.5px/1 var(--f-mac); color: var(--bubble-fg); background: var(--chip-glass); border: 1px solid var(--bubble-line); border-radius: 4px; padding: 2px 5px; min-width: 18px; text-align: center; }
 
-.b-route { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 11.5px; color: var(--bubble-muted); flex-wrap: wrap; }
-.b-asked { padding: 10px 14px 6px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.b-route { display: flex; align-items: center; gap: 8px; padding: 0 18px 14px; font-size: 11.5px; color: var(--bubble-muted); flex-wrap: wrap; }
+.b-asked { padding: 14px 18px 8px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .rchip {
   display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bubble-line); background: var(--chip-glass); border-radius: 6px; padding: 2px 8px 2px 7px; height: 22px;
   font: 500 12px/1 var(--f-mac); color: var(--bubble-fg);
@@ -303,7 +362,7 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .rchip .caret { opacity: .5; font-size: 8px; }
 .rchip.routing { color: var(--bubble-muted); }
 .why { border: 0; background: transparent; padding: 0; font-size: 11.5px; color: var(--bubble-muted); text-decoration: underline dotted; text-underline-offset: 3px; }
-.trace { margin: 0 10px 10px; padding: 8px 10px; border-radius: 8px; background: var(--chip-glass); border: 1px solid var(--bubble-line); font: 11px/1.6 var(--f-mono); color: var(--bubble-muted); }
+.trace { margin: 0 14px 14px; padding: 8px 10px; border-radius: 8px; background: var(--chip-glass); border: 1px solid var(--bubble-line); font: 11px/1.6 var(--f-mono); color: var(--bubble-muted); }
 .trace div { display: grid; grid-template-columns: 16px 152px 1fr; gap: 4px; }
 .trace .hit { color: var(--bubble-fg); font-weight: 600; }
 .trace .skip { opacity: .7; }
@@ -322,8 +381,8 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .menu input:focus, .own input:focus { border-color: var(--accent); }
 .menu .mi { padding: 3px 3px 5px; }
 
-.b-reply { padding: 2px 14px 6px; max-height: 280px; overflow: auto; font-size: 13.5px; line-height: 1.55; }
-.b-reply p { margin: 0 0 8px; }
+.b-reply { padding: 2px 18px 10px; max-height: 300px; overflow: auto; font-size: 13.5px; line-height: 1.55; }
+.b-reply p { margin: 0 0 10px; }
 .b-reply ul { margin: 0 0 8px; padding-left: 18px; }
 .b-reply code { font: 11.5px var(--f-mono); background: var(--chip-glass); border: 1px solid var(--bubble-line); padding: 0 4px; border-radius: 4px; }
 .b-reply pre { margin: 0 0 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--f-mono); white-space: pre-wrap; }
@@ -336,12 +395,12 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
 .steps-mini { font: 11px/1.7 var(--f-mono); color: var(--bubble-muted); margin: 0 0 8px; }
 .steps-mini .ok { color: var(--ok); }
 
-.b-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--bubble-line); }
-.abtn { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 4px 8px; font: 500 12.5px var(--f-mac); color: var(--bubble-fg); display: inline-flex; gap: 7px; align-items: center; }
+.b-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--bubble-line); }
+.abtn { border: 1px solid transparent; background: transparent; border-radius: 7px; padding: 5px 10px; font: 500 12.5px var(--f-mac); color: var(--bubble-fg); display: inline-flex; gap: 7px; align-items: center; }
 .abtn:hover { background: var(--chip-glass); }
 .abtn.primary { background: var(--chip-glass); border-color: var(--bubble-line); }
 .abtn kbd { font: 500 10.5px/1 var(--f-mac); color: var(--bubble-muted); }
-.ask { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 0 10px 10px; font-size: 13px; }
+.ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 14px; font-size: 13px; }
 .ask .q { width: 100%; color: var(--bubble-fg); font-weight: 600; margin: 0 4px 4px; }
 .ask .hintx { color: var(--bubble-muted); font-size: 11.5px; margin-left: 4px; }
 .own { width: 100%; margin-top: 4px; }
@@ -438,6 +497,16 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
       <div>
         <div class="eyebrow" style="margin-bottom:6px">Routing log</div>
         <div class="log" id="g-log">No requests yet.</div>
+      </div>
+      <div>
+        <div class="eyebrow" style="margin-bottom:6px">Context chip style</div>
+        <div class="seg" role="radiogroup" aria-label="Context chip style" id="chip-seg">
+          <button type="button" role="radio" data-c="pill">Pills</button>
+          <button type="button" role="radio" data-c="inline">Inline</button>
+          <button type="button" role="radio" data-c="tiles">Tiles</button>
+          <button type="button" role="radio" data-c="stack">Stack</button>
+        </div>
+        <p class="seg-note" id="chip-note"></p>
       </div>
       <div class="note">Press <kbd>⌥</kbd> <kbd>Space</kbd> to summon and <kbd>Esc</kbd> to dismiss, or use the buttons above. Best on a laptop-sized screen.</div>
     </aside>
@@ -543,6 +612,9 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
   const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // On touch screens, auto-focusing a field opens the keyboard and scrolls the page; only focus when there is a real pointer.
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const softFocus = el => { if (el && !coarse) el.focus({ preventScroll: true }); };
 
   /* ---------- scale the desktop to fit ---------- */
   function fit() {
@@ -638,11 +710,11 @@ Finished in 0.21 seconds
       steps: ['Select the stack trace in the terminal', 'Summon the bubble with ⌥Space', 'Check the context chip, then send', 'See where it went (→ shop)', 'Use the answer: Paste here, Copy, Open session or Reply'],
       prompt: 'why is this failing?',
       ctx: [
-        { ico: '◧', text: 'VS Code' },
-        { ico: '▤', text: 'app/models/order.rb' },
-        { ico: '¶', text: '14 lines selected' },
-        { shot: true, text: 'screenshot' },
-        { secret: true, ico: '⚿', text: '1 secret redacted' },
+        { kind: 'app', ico: 'VS', text: 'VS Code', sub: 'shop workspace' },
+        { kind: 'file', ico: '▤', text: 'order.rb', sub: 'app/models · ~/code/shop' },
+        { kind: 'sel', ico: '¶', text: '14 lines', sub: 'terminal selection' },
+        { kind: 'shot', shot: true, text: 'Screenshot', sub: 'Code window' },
+        { kind: 'secret', secret: true, ico: '⚿', text: '1 secret redacted', sub: 'Stripe key' },
       ],
       route: { to: 'shop', step: 2, label: 'Path match', why: 'app/models/order.rb is inside ~/code/shop' },
       reply: [
@@ -657,10 +729,10 @@ Finished in 0.21 seconds
       steps: ['Select the paragraph in the blog post', 'Summon the bubble with ⌥Space', 'Send the request', 'See where it went (→ game idea)', 'Tap the routing chip to reroute it'],
       prompt: 'save this for the game idea, and summarize it',
       ctx: [
-        { ico: '◎', text: 'Safari' },
-        { ico: '↗', text: 'blog.lowpoly.dev/posts/runs-that-remember' },
-        { ico: '¶', text: '1 paragraph' },
-        { shot: true, text: 'screenshot' },
+        { kind: 'app', ico: 'Sa', text: 'Safari', sub: 'Runs that remember' },
+        { kind: 'url', ico: '◎', text: 'blog.lowpoly.dev', sub: '/posts/runs-that-remember' },
+        { kind: 'sel', ico: '¶', text: '1 paragraph', sub: '62 words' },
+        { kind: 'shot', shot: true, text: 'Screenshot', sub: 'Safari window' },
       ],
       route: { to: 'game', step: 5, label: 'Model classification', why: '"game idea" matches the game idea project (confidence 0.93)' },
       reply: [
@@ -683,10 +755,10 @@ Finished in 0.21 seconds
       steps: ['Select the failing test output', 'Summon and ask shop to fix it', 'Walk away while it works', 'Approve the test run from the notification', 'Come back and open the menu-bar badge', 'Read the "while you were away" card'],
       prompt: 'fix the failing test and run it',
       ctx: [
-        { ico: '◧', text: 'VS Code' },
-        { ico: '▤', text: 'spec/models/order_spec.rb' },
-        { ico: '›_', text: 'terminal: 1 failure' },
-        { shot: true, text: 'screenshot' },
+        { kind: 'app', ico: 'VS', text: 'VS Code', sub: 'shop workspace' },
+        { kind: 'file', ico: '▤', text: 'order_spec.rb', sub: 'spec/models · ~/code/shop' },
+        { kind: 'term', ico: '›_', text: '1 failure', sub: 'terminal output' },
+        { kind: 'shot', shot: true, text: 'Screenshot', sub: 'Code window' },
       ],
       route: { to: 'shop', step: 2, label: 'Path match', why: 'spec/models/order_spec.rb is inside ~/code/shop' },
     },
@@ -757,7 +829,7 @@ Finished in 0.21 seconds
 
   /* ---------- bubble ---------- */
   function placeBubble() {
-    const w = 420;
+    const w = 460;
     let x = S.cx + 16, y = S.cy + 18;
     if (x + w > 1170) x = 1170 - w;
     const h = bubble.offsetHeight || 160;
@@ -767,16 +839,18 @@ Finished in 0.21 seconds
   }
 
   function ctxChips(ctx) {
-    return `<div class="b-ctx" aria-label="Captured context">` + ctx.map((c, i) =>
-      `<span class="cchip${c.shot ? ' shot' : ''}${c.secret ? ' secret' : ''}" data-i="${i}" title="${c.secret ? 'An API key in the selection was replaced with [REDACTED] before sending' : 'Sent with your request'}">` +
-      (c.shot ? '<span class="thumb"></span>' : `<span class="ico" aria-hidden="true">${c.ico}</span>`) +
-      `<span>${esc(c.text)}</span><button type="button" class="x" aria-label="Remove ${esc(c.text)}">×</button></span>`
+    const redacted = ctx.filter(c => c.secret).length;
+    const summary = `${ctx.length} items${redacted ? ', ' + redacted + ' redacted' : ''}`;
+    return `<div class="b-ctx" aria-label="Captured context"><span class="ctx-sum" aria-hidden="true">${summary}</span>` + ctx.map((c, i) =>
+      `<span class="cchip k-${c.kind}${c.shot ? ' shot' : ''}${c.secret ? ' secret' : ''}" data-i="${i}" title="${esc(c.text + ' · ' + c.sub)}${c.secret ? ' (replaced with [REDACTED] before sending)' : ''}">` +
+      `<span class="ci" aria-hidden="true">${c.shot ? '<span class="thumb"></span>' : c.ico}</span>` +
+      `<span class="ct"><span class="cl">${esc(c.text)}</span><span class="cs">${esc(c.sub)}</span></span><button type="button" class="x" aria-label="Remove ${esc(c.text)}">×</button></span>`
     ).join('') + `</div>`;
   }
 
   function summon() {
     if (S.step < 1) selectContext();
-    if (!bubble.hidden && !S.sent) { bubble.querySelector('textarea').focus(); return; }
+    if (!bubble.hidden && !S.sent) { softFocus(bubble.querySelector('textarea')); return; }
     if (S.sent) return;
     const f = FLOWS[S.flow];
     const v = S.vague ? FLOWS['2b'] : f;
@@ -790,7 +864,7 @@ Finished in 0.21 seconds
     glowAt(S.cx, S.cy); glowBubble();
     bubble.querySelectorAll('.cchip .x').forEach(x => x.onclick = e => {
       const chip = e.target.closest('.cchip'); chip.classList.add('removed');
-      toast(`Removed "${chip.querySelector('span:not(.ico):not(.thumb)').textContent}". It won't be sent.`);
+      toast(`Removed "${chip.querySelector('.cl').textContent}". It won't be sent.`);
     });
     const ta = $('#b-text');
     ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -842,7 +916,7 @@ Finished in 0.21 seconds
       if (k === 'add') { toast('Agents plug in through adapters. Settings would list what you can connect.'); return; }
       S.agent = k === 'auto' ? null : k;
       refreshAgent();
-      if (!S.sent && $('#b-text')) $('#b-text').focus();
+      if (!S.sent) softFocus($('#b-text'));
       if (S.sent && S.route) {
         const ag = AGENTS[agentOf(S.route)].name;
         $('#b-route').querySelector('.ag').textContent = '· ' + ag;
@@ -867,7 +941,7 @@ Finished in 0.21 seconds
   }
 
   async function typeInto(ta, text) {
-    ta.focus();
+    softFocus(ta);
     const my = S.token;
     for (let i = 1; i <= text.length; i++) {
       if (my !== S.token || S.sent) return;
@@ -895,7 +969,8 @@ Finished in 0.21 seconds
     let route = { ...v.route };
     if (explicit) { const k = explicit[1].toLowerCase(); route = { to: k, step: 1, label: 'Explicit target', why: `you wrote @${explicit[1]}` }; }
 
-    bubble.innerHTML = `<div class="b-ctx">${kept.replace(/<button[^>]*class="x"[^>]*>×<\/button>/g, '')}</div>
+    const sum = bubble.querySelector('.ctx-sum') ? bubble.querySelector('.ctx-sum').outerHTML : '';
+    bubble.innerHTML = `<div class="b-ctx">${sum}${kept.replace(/<button[^>]*class="x"[^>]*>×<\/button>/g, '')}</div>
       <div class="b-asked">${esc(text)}</div>
       <div class="b-route" id="b-route"><span class="rchip routing"><span class="spinner"></span>Routing…</span></div>
       <div id="b-trace"></div>
@@ -983,7 +1058,7 @@ Finished in 0.21 seconds
     if (!rmenu.hidden) { rmenu.hidden = true; return; }
     menuAt($('#rchip'), `<div class="mi"><input id="rr-input" type="text" placeholder="Type a project or a new name…" aria-label="Type a project or a new project name"></div><div class="mh">Send this request to…</div>` +
       Object.entries(PROJECTS).map(([k, p]) => `<button type="button" data-k="${k}" class="${k === S.route ? 'on' : ''}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}${k === S.route ? '<small>current</small>' : ''}</button>`).join(''));
-    const inp = $('#rr-input'); inp.focus();
+    const inp = $('#rr-input'); softFocus(inp);
     inp.addEventListener('click', ev => ev.stopPropagation());
     inp.addEventListener('keydown', ev => {
       if (ev.key !== 'Enter') return; ev.preventDefault();
@@ -1240,6 +1315,24 @@ Finished in 0.21 seconds
     if (opts.vague) { S.step = 1; summon(); S.step = 4; renderGuide(); }
   }
 
+  const CHIP_NOTES = {
+    pill: 'Each item is a small labeled chip with a tinted icon. Clear and scannable; the default.',
+    inline: 'One quiet line of text, like a breadcrumb. Remove buttons appear on hover. The calmest option.',
+    tiles: 'Attachment cards with a preview and a second line of detail. Richest, but takes the most room.',
+    stack: 'Icons collapse into an overlapping stack with a count. Hover or click to expand into pills.',
+  };
+  function setChips(c) {
+    bubble.dataset.chips = c;
+    document.querySelectorAll('#chip-seg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.c === c)));
+    $('#chip-note').textContent = CHIP_NOTES[c];
+    try { localStorage.setItem('sc-chips', c); } catch (e) {}
+    if (!bubble.hidden) placeBubble();
+  }
+  document.querySelectorAll('#chip-seg button').forEach(b => b.onclick = () => setChips(b.dataset.c));
+  bubble.addEventListener('click', e => { const ctx = e.target.closest('.b-ctx'); if (ctx && bubble.dataset.chips === 'stack' && !e.target.closest('.x')) ctx.classList.toggle('open'); });
+  let savedChips = 'pill'; try { savedChips = localStorage.getItem('sc-chips') || 'pill'; } catch (e) {}
+  setChips(CHIP_NOTES[savedChips] ? savedChips : 'pill');
+
   document.querySelectorAll('.tabs [data-flow]').forEach(b => b.onclick = () => startFlow(+b.dataset.flow));
   $('#reset').onclick = () => startFlow(S.flow);
   $('#mb-icon').onclick = e => { e.stopPropagation(); togglePanel(); };
@@ -1252,7 +1345,7 @@ Finished in 0.21 seconds
   document.addEventListener('keydown', e => {
     if (e.altKey && e.code === 'Space') { e.preventDefault(); if (!S.away) summon(); }
     else if ((e.key === '1' || e.key === '2') && !/INPUT|TEXTAREA/.test(e.target.tagName) && $('#b-ask button[data-k]')) { bubble.querySelectorAll('#b-ask button[data-k]')[+e.key - 1].click(); }
-    else if (e.key === 'Escape') { if (!rmenu.hidden) { rmenu.hidden = true; if (!S.sent && $('#b-text')) $('#b-text').focus(); } else if (!mbpanel.hidden) togglePanel(false); else if (!bubble.hidden) dismiss(); }
+    else if (e.key === 'Escape') { if (!rmenu.hidden) { rmenu.hidden = true; if (!S.sent) softFocus($('#b-text')); } else if (!mbpanel.hidden) togglePanel(false); else if (!bubble.hidden) dismiss(); }
     else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && $('#a-paste') && !bubble.hidden) { e.preventDefault(); paste(); }
   });
 
