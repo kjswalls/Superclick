@@ -50,6 +50,10 @@ Kirby's feedback on M0, applied to the mockup:
 - **The cursor glow is now an outline in the shape of the pointer**, rippling out from the tip in two echoes, instead of a circle. Still drawn in our own overlay; the system cursor is untouched. Reduce Motion shows a single still outline.
 - **Agents get engraved marks:** each glyph is cut into a small metal-tinted tile (copper for Claude Code, red for OpenClaw, steel for Auto), with a highlight under each cut. The glyphs are our own generic shapes (a spark, three claw slashes, a split arrow), not the vendors' logos. In the real app, each adapter can supply its own icon, and we'd confirm brand-use rules before showing official logos.
 
+## 2026-11-04 · Cursor glow zips around the pointer outline
+
+Replaces the ripple. A short rainbow light travels around the pointer's outline (about 1.5 laps in 1.1 s), the full outline glows once, and then it's gone. It's drawn just under the real pointer in our own overlay, so only the rim outside the pointer's white edge lights up. The system cursor is untouched. Reduce Motion shows the full outline, still, for a moment. In M1 this needs the pointer's real shape and size (users can enlarge it in Accessibility settings), so the overlay must read the current cursor image rather than assume the default arrow.
+
 ## Pending
 
 - **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.
