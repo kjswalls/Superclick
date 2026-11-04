@@ -54,6 +54,10 @@ Kirby's feedback on M0, applied to the mockup:
 
 Replaces the ripple. A short rainbow light travels around the pointer's outline (about 1.5 laps in 1.1 s), the full outline glows once, and then it's gone. It's drawn just under the real pointer in our own overlay, so only the rim outside the pointer's white edge lights up. The system cursor is untouched. Reduce Motion shows the full outline, still, for a moment. In M1 this needs the pointer's real shape and size (users can enlarge it in Accessibility settings), so the overlay must read the current cursor image rather than assume the default arrow.
 
+## 2026-11-04 · Subtler rainbow edge on the bubble
+
+The bubble's summon edge is now a 1px rainbow line at about 90% strength, with a soft 6px halo at about 35% (was 1.5px plus a wide 16px halo at full strength). Kirby wanted it smaller and quieter; the pointer glow stays the main moment.
+
 ## Pending
 
 - **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.

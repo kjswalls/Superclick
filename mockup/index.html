@@ -243,11 +243,13 @@ button:focus-visible, [tabindex]:focus-visible, textarea:focus-visible { outline
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
-#bubble::before { inset: -1.5px; border-radius: 17.5px; padding: 1.5px; }
-#bubble::after { inset: -16px; border-radius: 30px; padding: 16px; filter: blur(9px); }
-#bubble.glow::before, #bubble.glow::after { animation: glow 1.5s cubic-bezier(.3,.6,.3,1) forwards; }
-#bubble.glow-static::before { opacity: 1; }
-@keyframes glow { 0% { --glow-a: 0deg; opacity: 0; } 12% { opacity: 1; } 65% { opacity: .9; } 100% { --glow-a: 320deg; opacity: 0; } }
+#bubble::before { inset: -1px; border-radius: 17px; padding: 1px; }
+#bubble::after { inset: -6px; border-radius: 22px; padding: 6px; filter: blur(4px); }
+#bubble.glow::before { animation: glow 1.5s cubic-bezier(.3,.6,.3,1) forwards; }
+#bubble.glow::after { animation: glowSoft 1.5s cubic-bezier(.3,.6,.3,1) forwards; }
+#bubble.glow-static::before { opacity: .8; }
+@keyframes glow { 0% { --glow-a: 0deg; opacity: 0; } 12% { opacity: .9; } 65% { opacity: .75; } 100% { --glow-a: 320deg; opacity: 0; } }
+@keyframes glowSoft { 0% { --glow-a: 0deg; opacity: 0; } 12% { opacity: .35; } 65% { opacity: .25; } 100% { --glow-a: 320deg; opacity: 0; } }
 /* a short rainbow light zips around the pointer's outline (about 1.5 laps), the full outline flashes once, then it's gone.
    It sits just under the real pointer, so only the rim outside the pointer's white edge shows. */
 .czip { position: absolute; width: 26px; height: 30px; margin: -4px 0 0 -4px; z-index: 58; pointer-events: none; overflow: visible; }
