@@ -63,3 +63,15 @@ The bubble's summon edge is now a 1px rainbow line at about 90% strength, with a
 - **Agent override (M3):** when you switch agents for one request, does it start a second session in the same project folder, or hand the running session's summary to the other agent? The mockup assumes a separate session that shares the project summary.
 
 - **Tech stack (SwiftUI vs Tauri):** to be proposed after M0 is reviewed. No system code until approved.
+
+## 2026-11-04 · Stack: native Swift app plus a TypeScript daemon
+
+Answers the SPEC's open questions on tech stack and Claude Code integration. Full reasoning in the [stack recommendation doc](https://claude.ai/artifact/QCowsVcKxmzbciXSdpAer6); Kirby approved each choice below.
+
+- **Mac app in Swift 6** (SwiftUI on AppKit), not Tauri or Electron. The bubble is a non-activating `NSPanel` with native glass; capture uses the Accessibility API and ScreenCaptureKit directly.
+- **Daemon in TypeScript on Bun**, compiled to one binary inside the app bundle and run as a LaunchAgent. The app talks to it over a local WebSocket. Two languages is accepted because the Claude Agent SDK and OpenClaw are TypeScript, and the daemon can be reused if a Windows UI ever happens.
+- **Claude Code through the Claude Agent SDK**, not by parsing `claude -p` output. It signs in with the user's Claude subscription first; API keys come later.
+- **Page context comes from the Accessibility tree**, which holds a web page's full text, including what's scrolled off screen. The screenshot is for visuals only. By default we send the text around the selection plus the page headings, and the agent can pull the full page on demand (context MCP server, M5). Fetching the URL is a fallback for public pages.
+- **No browser extension in v1.** Revisit only if Accessibility gaps show up in real use. Known gaps: canvas apps (Google Docs, Figma) and virtualized lists (Slack, Gmail, Notion).
+- **Supports macOS 15 and up**, with native glass on macOS 26 and a close material fallback on 15.
+- **Distribution outside the Mac App Store** (signed, notarized DMG with Sparkle updates), because the sandbox blocks the Accessibility features Superclick needs.
