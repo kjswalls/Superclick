@@ -9,8 +9,9 @@ Your AI agents, attached to your cursor. Superclick (code name; working product 
 
 | Milestone | State |
 |---|---|
-| M0: Clickable mockup | Ready for review |
-| M1–M5 | Not started. Stack (SwiftUI vs Tauri) to be proposed after M0 review |
+| M0: Clickable mockup | Done |
+| M1: Summon + See | Started. Page-text spike in [spikes/pagetext](spikes/pagetext) |
+| M2–M5 | Not started. Stack decided: Swift app + TypeScript daemon (see DECISIONS.md) |
 
 ## M0: clickable mockup
 
