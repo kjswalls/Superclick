@@ -105,3 +105,32 @@ Ten findings, all fixed before M2: nothing is sent before the blocklist has seen
 - **Paste here** puts the answer on the clipboard, sends ⌘V to the app underneath, then restores the previous clipboard unless something else changed it in the meantime. It needs Accessibility, which Superclick already has.
 - **Closing the bubble doesn't stop the request.** The menu-bar icon gets a dot when an answer or approval is waiting, and "Show last answer" reopens it at the pointer. If the app disconnects, the running request finishes but its events are dropped; catching up after a reconnect is M4.
 
+## 2026-11-10 · Adversarial review of M2
+
+Twelve findings, all fixed in M3's commit. The biggest: sessions load only the user's own Claude Code settings (`settingSources: ["user"]`), so a cloned repo's hooks and allow rules can't run things without asking; its CLAUDE.md is still read, as text. Reads run freely only inside the session's folder, and the prompt marks captured context as untrusted. Approval cards show the full command or diff, every tool call is shown, a turn always ends, a stale resume retries fresh, the app catches up after a reconnect, approvals queue, every waiting bubble is reachable, and there's a Stop button. Paste here marks the clipboard as transient and always restores it.
+
+## 2026-11-10 · M3: the coordinator
+
+- **SQLite** in `~/Library/Application Support/Superclick/superclick.db` (owner-only): projects, rules, sessions with summaries, the routing log, events. Request text stays in memory.
+- **Routing steps 1–6 as in SPEC**, cheapest first. The model step uses a small fast model (Haiku) with no tools and every input escaped as data, threshold 0.6; offline it backs off for a minute and routing falls through to Inbox.
+- **Git repos become projects on their own**, except the home folder, `/`, Superclick's own folder, and repos the user removed.
+- **Learned rules are narrow.** A reroute teaches a site rule for one repo, document or section, never a whole host, never mail, chat, calendars, localhost or IPs, and never an app rule (too broad to learn silently; add those in Projects). Choosing from the low-confidence offer teaches nothing, since it's an answer, not a correction.
+- **Recent focus needs the same app**, plus the same window or follow-up wording, so a new question in another app isn't swallowed by the last project.
+- **Paths compare through symlinks and case** (APFS is case-insensitive by default).
+
+## 2026-11-10 · Adversarial review of M3
+
+Eleven findings, all fixed in M5's commit: narrow learned rules (above), reroute failures land on the bubble, removing or moving a project stops its turns, Stop works while routing and while queued, home and removed repos are never adopted, Glob patterns that climb out of the folder ask first, URL globs run in linear time, summaries update one at a time, and the Projects window keeps what you're typing. Partly addressed: a page could still nudge the classifier's choice; its inputs are escaped, and a wrong guess only moves a request, which is one tap to undo.
+
+## 2026-11-10 · M4: following long tasks
+
+- **Notifications go to Notification Center** with Allow, Deny and a typed Reply, so approving never needs the bubble. Only for closed bubbles; an open bubble already shows it.
+- **"While you were away" is built from an event log**: what ran (first line of each request and tool), files changed, how it ended. First lines only, kept a week; the routing log is kept four weeks.
+- **The daemon is compiled with `bun build --compile`** with Claude Code embedded, put inside the app, and started at login as a LaunchAgent through SMAppService. Development can still use `bun run start`.
+
+## 2026-11-10 · M5: context tools for the agent
+
+- **`what_am_i_looking_at` always needs an approval**, even if the user's settings allow everything else; a capture is the one thing the agent can't take silently. It goes through the same blocklist and redaction as a summon, and the menu bar shows that it happened.
+- **`recent_context` runs freely**: it only returns what the user already sent with a recent request.
+- **A fresh MCP server instance per turn**, since the SDK's in-process servers hold per-query state.
+
