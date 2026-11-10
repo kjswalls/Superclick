@@ -108,17 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settings = SettingsStore.shared.value
 
         // Waiting work lives here, not on the cursor (DECISIONS).
-        if let m = bubble.lastAnswered {
-            let title: String
-            switch (m.approval != nil, m.phase) {
-            case (true, _): title = "⚠︎ \(m.routeLabel ?? "Claude Code") needs your OK…"
-            case (_, .done): title = (m.seen ? "Show last answer" : "● Answer ready") + " \(m.routeLabel ?? "")…"
-            case (_, .failed): title = "Last request failed…"
-            default: title = "Working on \u{201C}\(m.askedText.prefix(40))\u{201D}…"
-            }
-            menu.addItem(item(title, #selector(showLastAnswer)))
-            menu.addItem(.separator())
+        let waiting = bubble.waiting
+        let working = bubble.working
+        for m in waiting + working {
+            menu.addItem(requestItem(m))
         }
+        if waiting.isEmpty && working.isEmpty, let m = bubble.lastAnswered {
+            menu.addItem(item("Show last answer · \(m.projectName)", #selector(showLastAnswer)))
+        }
+        if bubble.lastAnswered != nil { menu.addItem(.separator()) }
 
         let summon = NSMenuItem(title: "Summon", action: #selector(summonFromMenu), keyEquivalent: "")
         summon.target = self
@@ -146,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(d)
         menu.addItem(.separator())
 
+        menu.addItem(item("Projects…", #selector(showProjects)))
         menu.addItem(item("Page-text check…", #selector(showDiagnostics)))
         menu.addItem(item("Permissions…", #selector(showOnboardingAction)))
         menu.addItem(item("Settings…", #selector(showSettings), key: ","))
@@ -165,6 +164,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
         i.target = target ?? self
         return i
+    }
+
+    /// One line per request that needs you or is still going, with Stop for running ones.
+    private func requestItem(_ m: BubbleModel) -> NSMenuItem {
+        let asked = "\u{201C}\(m.askedText.prefix(36))\(m.askedText.count > 36 ? "…" : "")\u{201D}"
+        let title: String
+        if m.approval != nil {
+            title = "⚠︎ \(m.projectName) needs your OK · \(asked)"
+        } else if m.phase == .done {
+            title = "● Answer ready in \(m.projectName) · \(asked)"
+        } else if m.phase == .failed {
+            title = "Failed in \(m.projectName) · \(asked)"
+        } else {
+            title = "Working in \(m.projectName) · \(asked)"
+        }
+        let i = NSMenuItem(title: title, action: #selector(showRequest(_:)), keyEquivalent: "")
+        i.target = self
+        i.representedObject = m
+        if m.isBusy && m.approval == nil {
+            let sub = NSMenu()
+            let open = NSMenuItem(title: "Show", action: #selector(showRequest(_:)), keyEquivalent: "")
+            open.target = self
+            open.representedObject = m
+            let stop = NSMenuItem(title: "Stop", action: #selector(stopRequest(_:)), keyEquivalent: "")
+            stop.target = self
+            stop.representedObject = m
+            sub.addItem(open)
+            sub.addItem(stop)
+            i.submenu = sub
+        }
+        return i
+    }
+
+    @objc private func showRequest(_ sender: NSMenuItem) {
+        guard let m = sender.representedObject as? BubbleModel else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            self.bubble.show(m)
+        }
+    }
+
+    @objc private func stopRequest(_ sender: NSMenuItem) {
+        guard let m = sender.representedObject as? BubbleModel else { return }
+        bubble.stop(m)
     }
 
     @objc private func showLastAnswer() {
@@ -201,6 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func showSettings() {
         present(id: "settings", title: "Superclick Settings", size: NSSize(width: 560, height: 560)) {
             SettingsView(store: SettingsStore.shared)
+        }
+    }
+
+    @objc func showProjects() {
+        present(id: "projects", title: "Projects", size: NSSize(width: 600, height: 620)) {
+            ProjectsView(daemon: self.daemon)
         }
     }
 

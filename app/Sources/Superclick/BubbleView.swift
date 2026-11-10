@@ -11,6 +11,9 @@ struct BubbleView: View {
     var onClose: () -> Void
     var onPaste: () -> Void
     var onApproval: (Bool) -> Void
+    /// Move the request: a project id, or a typed name.
+    var onMove: (String?, String?) -> Void
+    var onStop: () -> Void
     var onHeightChange: (CGFloat) -> Void
 
     @FocusState private var inputFocused: Bool
@@ -52,7 +55,8 @@ struct BubbleView: View {
             .padding(.bottom, 14)
 
             if model.phase != .none {
-                ReplyView(model: model, onPaste: onPaste, onApproval: onApproval)
+                ReplyView(model: model, projects: daemon.projects, onPaste: onPaste, onApproval: onApproval,
+                          onMove: onMove, onStop: onStop)
                     .padding(.horizontal, 18)
                     .padding(.bottom, 12)
             }
@@ -94,6 +98,7 @@ struct BubbleView: View {
             if model.phase == .done {
                 KeyHint(keys: "⌘↵", label: "paste here")
             } else if model.isBusy {
+                KeyHint(keys: "⌘.", label: "stop")
                 KeyHint(keys: "esc", label: "hide; keeps working")
             } else {
                 KeyHint(keys: "↵", label: daemon.isConnected ? "send" : "copy with context")
@@ -109,21 +114,29 @@ struct BubbleView: View {
 /// The agent's answer as it streams, the approval card, and the actions.
 struct ReplyView: View {
     @ObservedObject var model: BubbleModel
+    var projects: [ProjectInfo]
     var onPaste: () -> Void
     var onApproval: (Bool) -> Void
+    var onMove: (String?, String?) -> Void
+    var onStop: () -> Void
     @FocusState private var replyFocused: Bool
+    @FocusState private var moveFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let route = model.routeLabel {
-                Text(route)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .padding(.horizontal, 7)
-                    .frame(height: 20)
-                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .foregroundStyle(Color.accentColor)
-                    .help(model.routeReason ?? "")
+            HStack(spacing: 8) {
+                if model.route != nil { routeChip }
+                Spacer(minLength: 0)
+                if model.isBusy {
+                    Button("Stop", action: onStop)
+                        .keyboardShortcut(".", modifiers: .command)
+                        .controlSize(.small)
+                        .help("Stop this request (⌘.)")
+                }
             }
+
+            if model.needsRouteChoice, let r = model.route { routeChoice(r) }
+            if model.showMove { moveField }
 
             ForEach(Array(model.toolLines.enumerated()), id: \.offset) { _, line in
                 Label(line, systemImage: "magnifyingglass")
@@ -181,19 +194,100 @@ struct ReplyView: View {
         }
     }
 
+    /// "→ shop": tap to move the request to another project (SPEC: one-tap reroute).
+    private var routeChip: some View {
+        Menu {
+            Section("Move to") {
+                ForEach(projects.filter { $0.id != model.route?.projectID }) { p in
+                    Button(p.name) { onMove(p.id, nil) }
+                }
+            }
+            Divider()
+            Button("Another project…") {
+                model.showMove = true
+                moveFocused = true
+            }
+        } label: {
+            Text(model.routeLabel ?? "")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .padding(.horizontal, 7)
+        .frame(height: 20)
+        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .help((model.routeReason.map { "Why: \($0). " } ?? "") + "Click to move it to another project.")
+    }
+
+    /// Low confidence: "shop or Inbox?" with one tap, or type another.
+    private func routeChoice(_ r: RouteInfo) -> some View {
+        HStack(spacing: 6) {
+            Text("Not sure where this goes:")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            ForEach(r.ask) { p in
+                Button(p.name) { onMove(p.id, nil) }
+            }
+            Button("Keep in \(r.project)") { model.settleRoute() }
+            Button("Other…") {
+                model.showMove = true
+                moveFocused = true
+            }
+            .buttonStyle(.borderless)
+        }
+        .controlSize(.small)
+    }
+
+    private var moveField: some View {
+        HStack(spacing: 6) {
+            TextField("Project name, existing or new", text: $model.moveName)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12.5))
+                .focused($moveFocused)
+                .onSubmit(submitMove)
+            Button("Move", action: submitMove)
+                .disabled(model.moveName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel") { model.showMove = false }
+                .buttonStyle(.borderless)
+        }
+        .controlSize(.small)
+    }
+
+    private func submitMove() {
+        let name = model.moveName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        if let p = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            onMove(p.id, nil)
+        } else {
+            onMove(nil, name)
+        }
+    }
+
     private func approvalCard(_ a: PendingApproval) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill").foregroundStyle(Color(hex: 0xD2832A))
                 Text("\(a.tool) needs your OK").font(.system(size: 12.5, weight: .semibold))
+                Spacer()
+                if model.approvals.count > 1 {
+                    Text("1 of \(model.approvals.count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
-            Text(a.summary)
-                .font(.system(size: 12, design: .monospaced))
-                .lineLimit(3)
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            // The whole input, never cut short: the end of a command is where trouble hides.
+            ScrollView {
+                Text(a.detail.isEmpty ? a.summary : a.detail)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 160)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(8)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
             // Every choice also takes typed input (DECISIONS).
             TextField("Or tell Claude what to do instead…", text: $model.approvalReply)
                 .textFieldStyle(.roundedBorder)

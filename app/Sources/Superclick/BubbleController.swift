@@ -37,8 +37,10 @@ final class BubblePanel: NSPanel {
 final class BubbleController: NSObject, NSWindowDelegate {
     private let panel = BubblePanel()
     private var model: BubbleModel?
-    /// The last bubble whose request went to the agent, for "Show last answer".
-    private(set) var lastAnswered: BubbleModel?
+    /// Bubbles whose request went to the agent, newest first. The menu lists the
+    /// ones still working, waiting for an OK, or with an unread answer.
+    private(set) var answered: [BubbleModel] = []
+    var lastAnswered: BubbleModel? { answered.first }
     private var clickMonitor: Any?
     private var anchor: NSPoint = .zero
     private var placeAbove = false
@@ -72,10 +74,19 @@ final class BubbleController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel.isVisible }
 
     /// True when a closed bubble has an answer or an approval waiting.
-    var hasWaitingAnswer: Bool {
-        guard let m = lastAnswered, m !== model || !panel.isVisible else { return false }
-        if m.approval != nil { return true }
-        return (m.phase == .done || m.phase == .failed) && !m.seen
+    var hasWaitingAnswer: Bool { !waiting.isEmpty }
+
+    /// Closed bubbles that need the user: an approval, or an answer they haven't seen.
+    var waiting: [BubbleModel] {
+        answered.filter { m in
+            guard m !== model || !panel.isVisible else { return false }
+            return m.approval != nil || ((m.phase == .done || m.phase == .failed) && !m.seen)
+        }
+    }
+
+    /// Closed bubbles still working.
+    var working: [BubbleModel] {
+        answered.filter { ($0 !== model || !panel.isVisible) && $0.isBusy && $0.approval == nil }
     }
 
     func toggle(summonedAt: Double) {
@@ -99,11 +110,20 @@ final class BubbleController: NSObject, NSWindowDelegate {
 
     /// Reopens the last answered bubble at the pointer (from the menu bar).
     func showLastAnswer() {
-        guard let m = lastAnswered else { return }
+        if let m = lastAnswered { show(m) }
+    }
+
+    /// Reopens a bubble at the pointer: from the menu bar, a notification, or a catch-up card.
+    func show(_ m: BubbleModel) {
         if panel.isVisible { close() }
         present(m)
-        m.seen = true
+        if m.phase == .done || m.phase == .failed { m.seen = true }
         onBackgroundChange?()
+    }
+
+    /// Finds a bubble by its request id (notifications carry the id).
+    func model(forRequest id: String) -> BubbleModel? {
+        answered.first { $0.requestID == id }
     }
 
     private func present(_ model: BubbleModel) {
@@ -114,6 +134,8 @@ final class BubbleController: NSObject, NSWindowDelegate {
             onClose: { [weak self] in self?.close() },
             onPaste: { [weak self] in self?.paste() },
             onApproval: { [weak self] allow in self?.answerApproval(allow: allow) },
+            onMove: { [weak self] id, name in self?.move(projectID: id, name: name) },
+            onStop: { [weak self] in self?.stop() },
             onHeightChange: { [weak self] h in self?.resize(height: h) })
         let hosting = NSHostingView(rootView: view)
         hosting.sizingOptions = []
@@ -167,12 +189,13 @@ final class BubbleController: NSObject, NSWindowDelegate {
         let prompt = model.promptText
         if daemon.isConnected {
             model.onBackgroundChange = { [weak self] in self?.onBackgroundChange?() }
-            let id = daemon.sendRequest(text: text, prompt: prompt, bundle: model.bundle, fullPage: model.fullPage) {
-                [weak model] event in model?.apply(event)
-            }
+            // A reply in the same bubble continues in the same project.
+            let followUp = (model.phase == .done || model.phase == .failed) ? model.route?.projectID : nil
+            let id = daemon.sendRequest(text: text, prompt: prompt, bundle: model.bundle, fullPage: model.fullPage,
+                                        project: followUp) { [weak model] event in model?.apply(event) }
             if let id {
                 model.beginRequest(id: id, text: text)
-                lastAnswered = model
+                remember(model)
                 return
             }
         }
@@ -187,12 +210,40 @@ final class BubbleController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func remember(_ m: BubbleModel) {
+        answered.removeAll { $0 === m }
+        answered.insert(m, at: 0)
+        // Keep a few; drop finished, seen ones first.
+        while answered.count > 12 {
+            if let i = answered.lastIndex(where: { !$0.isBusy && $0.approval == nil }) { answered.remove(at: i) } else { break }
+        }
+    }
+
     private func answerApproval(allow: Bool) {
         guard let model, let a = model.approval else { return }
         let typed = model.approvalReply.trimmingCharacters(in: .whitespacesAndNewlines)
-        daemon.answerApproval(id: a.id, allow: allow && typed.isEmpty, message: typed.isEmpty ? nil : typed)
-        model.clearApproval()
+        answer(model, approval: a.id, allow: allow && typed.isEmpty, message: typed.isEmpty ? nil : typed)
+    }
+
+    /// Answers one approval, from the bubble or a notification.
+    func answer(_ m: BubbleModel, approval id: String, allow: Bool, message: String?) {
+        daemon.answerApproval(id: id, requestID: m.requestID, allow: allow, message: message)
+        m.clearApproval(id: id)
         onBackgroundChange?()
+    }
+
+    /// Moves the request to another project, by id or by a typed name (new if none has it).
+    private func move(projectID: String?, name: String?) {
+        guard let model, let id = model.requestID else { return }
+        if projectID == model.route?.projectID { model.settleRoute(); return }
+        model.beginMove()
+        daemon.reroute(requestID: id, projectID: projectID, name: name) { [weak model] e in model?.apply(e) }
+    }
+
+    /// Stops the running turn. The daemon answers with a "Cancelled." error.
+    func stop(_ m: BubbleModel? = nil) {
+        guard let target = m ?? model, let id = target.requestID, target.isBusy else { return }
+        daemon.cancel(requestID: id)
     }
 
     /// Paste here: hide the bubble, paste the answer into the app underneath,
@@ -241,7 +292,12 @@ enum Paster {
             return copy
         }
         pb.clearContents()
-        pb.setString(text, forType: .string)
+        // Marked transient so clipboard managers don't keep a copy (nspasteboard.org).
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
+        pb.writeObjects([item])
         let changeCount = pb.changeCount
 
         Task { @MainActor in
@@ -258,9 +314,9 @@ enum Paster {
 
             try? await Task.sleep(for: .milliseconds(700))
             // Restore what was on the clipboard, unless something else changed it meanwhile.
-            if pb.changeCount == changeCount, !saved.isEmpty {
+            if pb.changeCount == changeCount {
                 pb.clearContents()
-                pb.writeObjects(saved)
+                if !saved.isEmpty { pb.writeObjects(saved) }
             }
         }
     }

@@ -37,10 +37,12 @@ enum LoadState: Equatable { case idle, loading, done }
 
 enum ReplyPhase: Equatable { case none, waiting, streaming, done, failed }
 
-struct PendingApproval: Equatable {
+struct PendingApproval: Equatable, Identifiable {
     var id: String
     var tool: String
     var summary: String
+    /// The full input: the whole command, or the content being written.
+    var detail: String
 }
 
 /// Drives one summon: captures context in stages and holds what the bubble shows.
@@ -61,10 +63,18 @@ final class BubbleModel: ObservableObject {
     @Published private(set) var replyText = ""
     @Published private(set) var finalText: String?
     @Published private(set) var toolLines: [String] = []
-    @Published private(set) var approval: PendingApproval?
-    @Published private(set) var routeLabel: String?
-    @Published private(set) var routeReason: String?
+    /// Approvals waiting for an answer, oldest first. The card shows the first.
+    @Published private(set) var approvals: [PendingApproval] = []
     @Published var approvalReply = ""
+    // Where the coordinator sent it (M3).
+    @Published private(set) var route: RouteInfo?
+    /// Set once the user has answered "shop or Inbox?" or moved the request.
+    @Published private(set) var routeSettled = false
+    @Published var showMove = false
+    @Published var moveName = ""
+    /// When the request was sent and when it finished, for the menu and the catch-up cards.
+    private(set) var sentAt: Date?
+    private(set) var finishedAt: Date?
     /// The request currently with the agent.
     private(set) var requestID: String?
     /// The question this reply answers, kept for "Show last answer".
@@ -331,54 +341,120 @@ final class BubbleModel: ObservableObject {
     /// What Paste here and Copy use: the final answer, or what has streamed so far.
     var answerText: String { finalText ?? replyText }
 
+    var approval: PendingApproval? { approvals.first }
+    var routeLabel: String? { route.map { "→ \($0.project)" } }
+    var routeReason: String? { route?.reason }
+    var projectName: String { route?.project ?? "Claude Code" }
+
+    /// Low confidence: the bubble asks "shop or Inbox?" until the user picks.
+    var needsRouteChoice: Bool {
+        guard let r = route, !routeSettled else { return false }
+        return r.step == "fallback" && !r.ask.isEmpty
+    }
+
     func beginRequest(id: String, text: String) {
         requestID = id
         askedText = text
-        phase = .waiting
-        replyText = ""
-        finalText = nil
-        toolLines = []
-        approval = nil
+        sentAt = Date()
+        finishedAt = nil
+        seen = false
+        route = nil
+        routeSettled = false
+        resetReply()
         status = nil
         request = ""
     }
 
+    /// The request is being moved to another project; its new run starts over.
+    func beginMove() {
+        routeSettled = true
+        showMove = false
+        moveName = ""
+        resetReply()
+        status = "Moving…"
+    }
+
+    func settleRoute() { routeSettled = true }
+
+    private func resetReply() {
+        phase = .waiting
+        replyText = ""
+        finalText = nil
+        toolLines = []
+        approvals = []
+        approvalReply = ""
+        finishedAt = nil
+    }
+
+    private func pushTool(_ line: String) {
+        toolLines.append(line)
+        if toolLines.count > 4 { toolLines.removeFirst(toolLines.count - 4) }
+    }
+
     func apply(_ event: ReplyEvent) {
         switch event {
-        case .accepted(let project, let agent, let reason, let note):
-            if let project {
-                let suffix = agent.map { " · " + $0 } ?? ""
-                routeLabel = "→ " + project + suffix
+        case .accepted(let route, let note):
+            // The first event of every run, including a moved one.
+            resetReply()
+            if let route {
+                if self.route != nil && self.route?.projectID != route.projectID { routeSettled = true }
+                self.route = route
+                status = nil
             } else {
                 status = note
             }
-            routeReason = reason
         case .delta(let text):
             phase = .streaming
             replyText += text
         case .tool(let summary):
-            toolLines.append(summary)
-            if toolLines.count > 4 { toolLines.removeFirst(toolLines.count - 4) }
-        case .approval(let id, let tool, let summary):
-            approval = PendingApproval(id: id, tool: tool, summary: summary)
-            approvalReply = ""
+            pushTool(summary)
+        case .approval(let id, let tool, let summary, let detail):
+            if !approvals.contains(where: { $0.id == id }) {
+                approvals.append(PendingApproval(id: id, tool: tool, summary: summary, detail: detail))
+            }
+            onBackgroundChange?()
+        case .approvalExpired(let id):
+            approvals.removeAll { $0.id == id }
+            status = "That approval had expired, so Claude Code was told no."
+            onBackgroundChange?()
+        case .resync(let snap):
+            if let r = snap.route { route = r }
+            replyText = snap.text
+            toolLines = Array(snap.tools.suffix(4))
+            approvals = snap.approvals
+            switch snap.status {
+            case "done":
+                finalText = snap.final ?? snap.text
+                if replyText.isEmpty { replyText = finalText ?? "" }
+                phase = .done
+                finishedAt = finishedAt ?? Date()
+            case "failed":
+                phase = .failed
+                status = snap.error
+                finishedAt = finishedAt ?? Date()
+            default:
+                phase = snap.text.isEmpty ? .waiting : .streaming
+            }
             onBackgroundChange?()
         case .done(let text):
             finalText = text.isEmpty ? replyText : text
             if replyText.isEmpty { replyText = text }
             phase = .done
-            approval = nil
+            approvals = []
+            finishedAt = Date()
             onBackgroundChange?()
         case .error(let message):
             phase = .failed
-            approval = nil
+            approvals = []
             status = message
+            finishedAt = Date()
             onBackgroundChange?()
         }
     }
 
-    func clearApproval() {
-        approval = nil
+    /// Takes an answered approval off the card; the next one, if any, shows.
+    func clearApproval(id: String) {
+        approvals.removeAll { $0.id == id }
         approvalReply = ""
     }
 }

@@ -1,18 +1,31 @@
 import type { Server, ServerWebSocket } from "bun";
 import { tokenMatches } from "./auth.ts";
-import { PROTOCOL_VERSION, ProtocolError, parseClientMessage, type ContextBundle, type ServerMessage } from "./protocol.ts";
+import { type Coordinator, type RouteDecision, stripMention } from "./coordinator.ts";
+import type { Project } from "./projects.ts";
+import {
+  PROTOCOL_VERSION,
+  ProtocolError,
+  parseClientMessage,
+  type ClientMessage,
+  type ContextBundle,
+  type ProjectInfo,
+  type RouteInfo,
+  type RunSnapshot,
+  type ServerMessage,
+} from "./protocol.ts";
 import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
 
 export const DEFAULT_PORT = 47811;
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 
 export interface DaemonOptions {
   token: string;
   port?: number;
   store?: RequestStore;
-  /** Agent sessions (M2). Without it the daemon only holds requests, as in M1. */
+  /** Agent sessions and the coordinator (M2, M3). Without them the daemon only holds requests, as in M1. */
   sessions?: SessionManager;
+  coordinator?: Coordinator;
   log?: (line: string) => void;
 }
 
@@ -20,92 +33,298 @@ interface Conn {
   client?: string;
 }
 
+/** One request's run in a project session. A reroute starts a new generation; older ones go quiet. */
+interface Run {
+  id: string;
+  gen: number;
+  abort: AbortController;
+  projectId: string;
+  /** What a reconnecting app needs to catch up. */
+  snap: RunSnapshot;
+}
+
+/** Finished runs are kept this long for catch-up, at most KEEP_FINISHED of them. */
+const FINISHED_MS = 60 * 60 * 1000;
+const KEEP_FINISHED = 30;
+
 /**
  * The daemon's local WebSocket API. It listens on 127.0.0.1 only, and accepts
  * a connection only when it presents the token from daemon.token and carries
  * no Origin header, so web pages in a browser can't reach it.
  */
+function requestIdOf(raw: string | Buffer): string | undefined {
+  try {
+    const v = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+    return v && typeof v === "object" && v.type === "request" && typeof v.id === "string" ? v.id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store: RequestStore; stop: () => void } {
   const store = opts.store ?? new RequestStore();
   const log = opts.log ?? ((l: string) => console.log(`[superclick] ${l}`));
+  const clients = new Set<ServerWebSocket<Conn>>();
 
   const send = (ws: ServerWebSocket<Conn>, m: ServerMessage) => {
-    // A run keeps going if the app disconnects; its events are dropped until M4's catch-up.
     if (ws.readyState === 1) ws.send(JSON.stringify(m));
   };
-  const running = new Map<string, AbortController>();
+  /** Request events go to every connected app window, so a reconnect or a second window still hears them. */
+  const broadcast = (m: ServerMessage) => {
+    for (const ws of clients) send(ws, m);
+  };
+  const runs = new Map<string, Run>();
+  const finished = new Map<string, RunSnapshot>();
+  let generation = 0;
 
-  async function run(ws: ServerWebSocket<Conn>, id: string, prompt: string, context: ContextBundle) {
+  const snapshots = (): RunSnapshot[] => {
+    const cutoff = Date.now() - FINISHED_MS;
+    for (const [id, s] of finished) if ((s.endedAt ?? 0) < cutoff) finished.delete(id);
+    return [...[...runs.values()].map((r) => r.snap), ...finished.values()];
+  };
+
+  const projectInfo = (): ProjectInfo[] => {
+    const c = opts.coordinator;
+    if (!c) return [];
+    const info = new Map(opts.sessions?.info().map((s) => [s.projectId, s]) ?? []);
+    return c.registry.list().map((p) => ({
+      ...p,
+      summary: info.get(p.id)?.summary ?? "",
+      updatedAt: info.get(p.id)?.updatedAt,
+      rules: c.registry.rules(p.id).map(({ id, kind, pattern, source }) => ({ id, kind, pattern, source })),
+    }));
+  };
+  const broadcastProjects = () => broadcast({ type: "projects", projects: projectInfo() });
+
+  const routeInfo = (d: RouteDecision, cwd: string): RouteInfo => ({
+    projectId: d.project.id,
+    project: d.project.name,
+    cwd,
+    agent: opts.sessions?.agentName ?? "Claude Code",
+    reason: d.reason,
+    step: d.step,
+    confidence: d.confidence,
+    ask: d.ask.map((p) => ({ id: p.id, name: p.name })),
+  });
+
+  async function run(id: string, prompt: string, text: string, context: ContextBundle, decision: RouteDecision) {
     const sessions = opts.sessions!;
-    const { route, session } = sessions.route(context);
-    log(`route ${id}: → ${route.project} (${route.reason})`);
-    send(ws, {
+    const project: Project = decision.project;
+    const session = sessions.session(project);
+    const gen = ++generation;
+    runs.get(id)?.abort.abort();
+    finished.delete(id);
+    const abort = new AbortController();
+    const snap: RunSnapshot = { id, text: "", tools: [], approvals: [], status: "running", startedAt: Date.now() };
+    runs.set(id, { id, gen, abort, projectId: project.id, snap });
+    const live = () => runs.get(id)?.gen === gen;
+    const emit = (m: ServerMessage) => {
+      if (live()) broadcast(m);
+    };
+    const finish = (status: "done" | "failed", text: string) => {
+      if (!live()) return;
+      snap.status = status;
+      snap.approvals = [];
+      snap.endedAt = Date.now();
+      if (status === "done") snap.final = text;
+      else snap.error = text;
+      runs.delete(id);
+      finished.set(id, snap);
+      while (finished.size > KEEP_FINISHED) finished.delete(finished.keys().next().value!);
+    };
+
+    log(`route ${id}: → ${project.name} (${decision.step}: ${decision.reason})`);
+    snap.route = routeInfo(decision, session.cwd);
+    emit({
       type: "request.accepted",
       id,
       captureId: context.id,
-      note: `Sent to ${route.project} · ${session.agent}`,
-      route: { project: route.project, cwd: route.cwd, agent: session.agent, reason: route.reason },
+      note: `Sent to ${project.name} · ${session.agent}`,
+      route: snap.route,
     });
-    const abort = new AbortController();
-    running.set(id, abort);
+    const body = decision.mention ? stripMention(prompt, decision.mention) : prompt;
     try {
-      for await (const e of session.send({ prompt, context, signal: abort.signal })) {
+      for await (const e of session.send({ prompt: body, context, signal: abort.signal })) {
+        if (!live()) continue;
         switch (e.type) {
-          case "text": send(ws, { type: "reply.delta", id, text: e.text }); break;
-          case "tool": send(ws, { type: "reply.tool", id, tool: e.tool, summary: e.summary }); break;
-          case "approval": send(ws, { type: "approval.needed", id, approvalId: e.approvalId, tool: e.tool, summary: e.summary }); break;
-          case "done": send(ws, { type: "reply.done", id, text: e.text }); break;
-          case "error": send(ws, { type: "reply.error", id, message: e.message }); break;
+          case "text":
+            snap.text += e.text;
+            emit({ type: "reply.delta", id, text: e.text });
+            break;
+          case "tool":
+            snap.tools = [...snap.tools, e.summary].slice(-20);
+            emit({ type: "reply.tool", id, tool: e.tool, summary: e.summary });
+            break;
+          case "approval":
+            snap.approvals.push({ approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
+            emit({ type: "approval.needed", id, approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
+            break;
+          case "done":
+            emit({ type: "reply.done", id, text: e.text });
+            finish("done", e.text);
+            void sessions.updateSummary(project.id, text, e.text).then(() => broadcastProjects(), () => {});
+            break;
+          case "error":
+            emit({ type: "reply.error", id, message: e.message });
+            finish("failed", e.message);
+            break;
         }
       }
     } catch (e) {
-      send(ws, { type: "reply.error", id, message: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      emit({ type: "reply.error", id, message });
+      finish("failed", message);
     } finally {
-      running.delete(id);
+      if (live()) {
+        // The session ended without saying done or error.
+        emit({ type: "reply.error", id, message: "The agent stopped without an answer." });
+        finish("failed", "The agent stopped without an answer.");
+      }
     }
   }
 
+  async function startRequest(msg: Extract<ClientMessage, { type: "request" }>) {
+    const c = msg.context;
+    const coordinator = opts.coordinator!;
+    let decision: RouteDecision;
+    try {
+      decision = await coordinator.route({ id: msg.id, text: msg.text, context: c, project: msg.project });
+    } catch (e) {
+      log(`routing failed for ${msg.id}: ${e instanceof Error ? e.message : String(e)}`);
+      decision = { project: coordinator.registry.inbox, step: "fallback", reason: "routing failed", ask: [] };
+    }
+    coordinator.noteRouted({ id: msg.id, text: msg.text, context: c }, decision);
+    await run(msg.id, msg.prompt ?? msg.text, msg.text, c, decision);
+  }
+
+  async function reroute(ws: ServerWebSocket<Conn>, msg: Extract<ClientMessage, { type: "request.reroute" }>) {
+    const coordinator = opts.coordinator!;
+    const stored = store.byRequest(msg.id);
+    if (!stored) {
+      send(ws, { type: "error", error: "unknown_request", detail: "That request is too old to move. Ask again." });
+      return;
+    }
+    const reg = coordinator.registry;
+    let to = msg.project ? reg.get(msg.project) : undefined;
+    let made = false;
+    if (!to && msg.name) {
+      to = reg.byName(msg.name);
+      if (!to) {
+        to = reg.save({ name: msg.name, description: `Started from: ${stored.text.slice(0, 120)}` });
+        made = true;
+      }
+    }
+    if (!to) {
+      send(ws, { type: "error", error: "unknown_project", detail: msg.project ?? msg.name });
+      return;
+    }
+    const rule = coordinator.learnFromReroute(stored.context, to);
+    const decision: RouteDecision = {
+      project: to,
+      step: "explicit",
+      reason: `moved by you${made ? " to a new project" : ""}${rule ? `; ${rule.pattern} goes here from now on` : ""}`,
+      ask: [],
+    };
+    coordinator.noteRouted({ id: msg.id, text: stored.text, context: stored.context }, decision);
+    log(`reroute ${msg.id} → ${to.name}${rule ? ` (learned ${rule.kind} rule ${rule.pattern})` : ""}`);
+    if (made || rule) broadcastProjects();
+    await run(msg.id, stored.prompt ?? stored.text, stored.text, stored.context, decision);
+  }
+
   function handleMessage(ws: ServerWebSocket<Conn>, raw: string | Buffer) {
-    let msg;
+    let msg: ClientMessage;
     try {
       msg = parseClientMessage(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
     } catch (e) {
       const detail = e instanceof ProtocolError ? e.message : String(e);
+      // A refused request still gets an answer on its bubble, not just a log line.
+      const id = requestIdOf(raw);
+      if (id) send(ws, { type: "reply.error", id, message: `Superclick couldn't send this: ${detail}` });
       send(ws, { type: "error", error: "bad_message", detail });
       return;
     }
+    const agents = !!(opts.sessions && opts.coordinator);
+    const fail = (e: unknown) => {
+      log(`error: ${e instanceof Error ? e.message : String(e)}`);
+      send(ws, { type: "error", error: "failed", detail: e instanceof Error ? e.message : String(e) });
+    };
     switch (msg.type) {
       case "hello":
         ws.data.client = `${msg.client} ${msg.version}`;
         log(`connected: ${ws.data.client}`);
+        if (agents) {
+          send(ws, { type: "projects", projects: projectInfo() });
+          send(ws, { type: "sync", runs: snapshots() });
+        }
         return;
       case "ping":
         send(ws, { type: "pong" });
         return;
       case "request": {
-        store.add({ id: msg.id, text: msg.text, fullPage: msg.fullPage, context: msg.context });
+        store.add({ id: msg.id, text: msg.text, prompt: msg.prompt, fullPage: msg.fullPage, context: msg.context });
         const c = msg.context;
         const words = c.page?.wordCount ?? 0;
         // Log the shape of the request, never its content.
         log(`request ${msg.id} from ${c.app.name}: ${msg.text.length} chars, page ${words} words, ` +
             `${Object.values(c.redactions).reduce((a, b) => a + b, 0)} redacted`);
-        if (opts.sessions) {
-          void run(ws, msg.id, msg.prompt ?? msg.text, c);
+        if (agents) {
+          void startRequest(msg).catch(fail);
         } else {
           send(ws, { type: "request.accepted", id: msg.id, captureId: c.id, note: "Held locally; no agent is configured." });
         }
         return;
       }
+      case "request.reroute":
+        if (!agents) return fail(new Error("No agents are configured."));
+        void reroute(ws, msg).catch(fail);
+        return;
       case "approval.answer": {
         const ok = opts.sessions?.all().some((s) => s.approve(msg.approvalId, { allow: msg.allow, message: msg.message }));
-        if (!ok) send(ws, { type: "error", error: "unknown_approval", detail: msg.approvalId });
+        if (ok) {
+          for (const r of runs.values()) r.snap.approvals = r.snap.approvals.filter((a) => a.approvalId !== msg.approvalId);
+        } else {
+          send(ws, { type: "approval.expired", id: msg.id, approvalId: msg.approvalId });
+        }
         return;
       }
       case "request.cancel":
-        running.get(msg.id)?.abort();
+        runs.get(msg.id)?.abort.abort();
         return;
       case "context.get":
         send(ws, { type: "context", captureId: msg.captureId, part: msg.part, text: store.part(msg.captureId, msg.part) });
+        return;
+      case "projects.list":
+        send(ws, { type: "projects", projects: projectInfo() });
+        return;
+      case "projects.save": {
+        const reg = opts.coordinator?.registry;
+        if (!reg) return fail(new Error("No agents are configured."));
+        try {
+          const before = msg.project.id ? reg.get(msg.project.id) : undefined;
+          const saved = reg.save(msg.project);
+          if (before && before.paths[0] !== saved.paths[0]) opts.sessions?.drop(saved.id);
+        } catch (e) {
+          return fail(e);
+        }
+        broadcastProjects();
+        return;
+      }
+      case "projects.remove":
+        if (!opts.coordinator?.registry.remove(msg.id)) return fail(new Error("Inbox can't be removed."));
+        opts.sessions?.drop(msg.id);
+        broadcastProjects();
+        return;
+      case "rules.save":
+        try {
+          opts.coordinator?.registry.addRule(msg.projectId, msg.kind, msg.pattern, "user");
+        } catch (e) {
+          return fail(e);
+        }
+        broadcastProjects();
+        return;
+      case "rules.remove":
+        opts.coordinator?.registry.removeRule(msg.id);
+        broadcastProjects();
         return;
     }
   }
@@ -125,6 +344,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
     websocket: {
       maxPayloadLength: 16 * 1024 * 1024,
       open(ws) {
+        clients.add(ws);
         send(ws, { type: "welcome", version: VERSION, protocol: PROTOCOL_VERSION });
       },
       message(ws, raw) {
@@ -137,6 +357,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
         }
       },
       close(ws) {
+        clients.delete(ws);
         if (ws.data.client) log(`disconnected: ${ws.data.client}`);
       },
     },

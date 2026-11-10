@@ -29,10 +29,17 @@ describe("parseClientMessage", () => {
     ["bad context", JSON.stringify({ type: "request", id: "r", text: "x", context: { id: "c" } })],
     ["non-string field", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ url: 5 }) })],
     ["heading without text", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [{ level: 1 }], method: "treeWalk" } }) })],
-    ["heading with a huge level", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [{ level: 1e9, text: "h" }], method: "treeWalk" } }) })],
+    ["heading with a non-numeric level", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [{ level: "2", text: "h" }], method: "treeWalk" } }) })],
     ["heading that isn't an object", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [null], method: "treeWalk" } }) })],
     ["bad part", JSON.stringify({ type: "context.get", captureId: "c", part: "secrets" })],
   ])("rejects %s", (_, raw) => {
     expect(() => parseClientMessage(raw)).toThrow(ProtocolError);
   });
 });
+
+test("heading levels out of range are clamped, not refused", () => {
+  const m = parseClientMessage(JSON.stringify({ type: "request", id: "r", text: "x",
+    context: bundle({ page: { text: "t", headings: [{ level: 12, text: "a" }, { level: -3, text: "b" }], method: "treeWalk" } }) }));
+  expect(m.type === "request" && m.context.page!.headings.map((h) => h.level)).toEqual([9, 0]);
+});
+

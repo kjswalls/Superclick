@@ -11,7 +11,7 @@ export type AgentEvent =
   /** The agent used a tool (shown as a quiet line in the bubble). */
   | { type: "tool"; tool: string; summary: string }
   /** The agent wants to do something that needs the user's OK. */
-  | { type: "approval"; approvalId: string; tool: string; summary: string }
+  | { type: "approval"; approvalId: string; tool: string; summary: string; detail: string }
   /** The turn finished. `text` is the final answer, the part "Paste here" pastes. */
   | { type: "done"; text: string }
   | { type: "error"; message: string };
@@ -35,11 +35,19 @@ export interface AgentSession {
   /** stream_events: the events of one turn, ending with done or error. */
   send(input: SendInput): AsyncIterable<AgentEvent>;
   approve(approvalId: string, decision: Approval): boolean;
+  readonly isBusy: boolean;
   /** A running summary the coordinator can read (M3 routing, M4 catch-up cards). */
   summary(): string;
 }
 
+export interface StartOptions {
+  cwd: string;
+  /** The agent's own id for a session to pick up again, saved from an earlier run. */
+  resumeId?: string;
+  onSessionId?: (id: string) => void;
+}
+
 export interface AgentAdapter {
   readonly name: string;
-  startSession(opts: { cwd: string }): AgentSession;
+  startSession(opts: StartOptions): AgentSession;
 }

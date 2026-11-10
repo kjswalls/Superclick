@@ -3,6 +3,8 @@ import type { ContextBundle } from "./protocol.ts";
 export interface StoredRequest {
   id: string;
   text: string;
+  /** The request with its context as Markdown, kept so a reroute can resend it. */
+  prompt?: string;
   fullPage: boolean;
   context: ContextBundle;
   receivedAt: number;
@@ -29,7 +31,7 @@ export class RequestStore {
 
   private static sizeOf(r: StoredRequest): number {
     const c = r.context;
-    return r.text.length + (c.page?.text.length ?? 0) + (c.selection?.length ?? 0) +
+    return r.text.length + (r.prompt?.length ?? 0) + (c.page?.text.length ?? 0) + (c.selection?.length ?? 0) +
       (c.page?.headings.reduce((n, h) => n + h.text.length, 0) ?? 0);
   }
 
@@ -53,6 +55,20 @@ export class RequestStore {
       this.drop(oldest);
     }
     return stored;
+  }
+
+  /** The newest stored request with this request id. */
+  byRequest(id: string): StoredRequest | undefined {
+    this.prune();
+    let found: StoredRequest | undefined;
+    for (const r of this.byCapture.values()) if (r.id === id) found = r;
+    return found;
+  }
+
+  /** The most recent requests, newest first (M5's recent_context). */
+  recent(n: number): StoredRequest[] {
+    this.prune();
+    return [...this.byCapture.values()].reverse().slice(0, n);
   }
 
   get(captureId: string): StoredRequest | undefined {

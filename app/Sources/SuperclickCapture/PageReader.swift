@@ -206,7 +206,7 @@ public final class TreeWalker {
             var text = headingBuffer.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty, let title = v[2] as? String { text = title }
             if !text.isEmpty {
-                headings.append(Heading(level: level, text: text))
+                headings.append(Heading(level: min(max(level, 0), 9), text: text))
                 parts.append("\n\n" + String(repeating: "#", count: max(level, 1)) + " " + text + "\n\n")
             }
             return

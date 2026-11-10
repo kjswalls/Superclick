@@ -29,8 +29,17 @@ export interface ContextBundle {
 export type ClientMessage =
   | { type: "hello"; client: string; version: string }
   /** `prompt` is the request with its context rendered as Markdown by the app; `text` is what the user typed. */
-  | { type: "request"; id: string; text: string; prompt?: string; fullPage: boolean; context: ContextBundle }
-  | { type: "approval.answer"; approvalId: string; allow: boolean; message?: string }
+  /** `project` is a project id picked in the bubble, or the project of the answer being replied to. */
+  | { type: "request"; id: string; text: string; prompt?: string; fullPage: boolean; context: ContextBundle; project?: string }
+  /** Moves a request to another project. `name` is typed in the bubble and makes a new project if none has it. */
+  | { type: "request.reroute"; id: string; project?: string; name?: string }
+  | { type: "projects.list" }
+  | { type: "projects.save"; project: { id?: string; name: string; paths?: string[]; description?: string } }
+  | { type: "projects.remove"; id: string }
+  | { type: "rules.save"; projectId: string; kind: "url" | "app"; pattern: string }
+  | { type: "rules.remove"; id: number }
+  /** `id` is the request the approval belongs to, so an expired one can be reported on its bubble. */
+  | { type: "approval.answer"; approvalId: string; allow: boolean; message?: string; id?: string }
   | { type: "request.cancel"; id: string }
   | { type: "context.get"; captureId: string; part: "full" | "selection" | "outline" }
   | { type: "ping" };
@@ -40,18 +49,54 @@ export type ServerMessage =
   | { type: "request.accepted"; id: string; captureId: string; note: string; route?: RouteInfo }
   | { type: "reply.delta"; id: string; text: string }
   | { type: "reply.tool"; id: string; tool: string; summary: string }
-  | { type: "approval.needed"; id: string; approvalId: string; tool: string; summary: string }
+  /** `detail` is the full input (whole command, file content), for the approval card. */
+  | { type: "approval.needed"; id: string; approvalId: string; tool: string; summary: string; detail: string }
+  | { type: "approval.expired"; id?: string; approvalId: string }
+  /** Sent after hello: every run still going or recently finished, so a reconnected app can catch up. */
+  | { type: "sync"; runs: RunSnapshot[] }
   | { type: "reply.done"; id: string; text: string }
   | { type: "reply.error"; id: string; message: string }
   | { type: "context"; captureId: string; part: string; text: string | null }
+  | { type: "projects"; projects: ProjectInfo[] }
   | { type: "pong" }
   | { type: "error"; error: string; detail?: string };
 
 export interface RouteInfo {
+  projectId: string;
+  /** Short name for the routing chip ("→ shop"). */
   project: string;
   cwd: string;
   agent: string;
   reason: string;
+  /** Which routing step decided: explicit, path, rule, recent, model or fallback. */
+  step: string;
+  confidence?: number;
+  /** Low confidence: projects to offer with one tap. */
+  ask: { id: string; name: string }[];
+}
+
+export interface RunSnapshot {
+  id: string;
+  route?: RouteInfo;
+  text: string;
+  tools: string[];
+  approvals: { approvalId: string; tool: string; summary: string; detail: string }[];
+  status: "running" | "done" | "failed";
+  final?: string;
+  error?: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  paths: string[];
+  description: string;
+  agent: string;
+  summary: string;
+  updatedAt?: number;
+  rules: { id: number; kind: "url" | "app"; pattern: string; source: string }[];
 }
 
 export class ProtocolError extends Error {}
@@ -75,9 +120,10 @@ export function parseContext(v: unknown): ContextBundle {
     if (!isObj(p) || !isStr(p.text) || !Array.isArray(p.headings))
       throw new ProtocolError("context.page needs text and headings");
     for (const h of p.headings) {
-      if (!isObj(h) || !isStr(h.text) || typeof h.level !== "number" ||
-          !Number.isInteger(h.level) || h.level < 0 || h.level > 9)
-        throw new ProtocolError("context.page.headings need a level from 0 to 9 and text");
+      if (!isObj(h) || !isStr(h.text) || typeof h.level !== "number" || !Number.isFinite(h.level))
+        throw new ProtocolError("context.page.headings need a level and text");
+      // Pages can say aria-level="12"; clamp rather than refuse the request.
+      h.level = Math.min(9, Math.max(0, Math.round(h.level)));
     }
     if (p.wordCount !== undefined && typeof p.wordCount !== "number")
       throw new ProtocolError("context.page.wordCount must be a number");
@@ -113,15 +159,45 @@ export function parseClientMessage(raw: string): ClientMessage {
         prompt: isStr(v.prompt) ? v.prompt : undefined,
         fullPage: v.fullPage === true,
         context: parseContext(v.context),
+        project: isStr(v.project) && v.project ? v.project : undefined,
       };
     case "approval.answer":
       if (!isStr(v.approvalId)) throw new ProtocolError("approval.answer needs an approvalId");
       if (typeof v.allow !== "boolean") throw new ProtocolError("approval.answer needs allow: true or false");
       if (!optStr(v.message)) throw new ProtocolError("approval.answer message must be a string");
-      return { type: "approval.answer", approvalId: v.approvalId, allow: v.allow, message: isStr(v.message) ? v.message : undefined };
+      return { type: "approval.answer", approvalId: v.approvalId, allow: v.allow, message: isStr(v.message) ? v.message : undefined,
+        id: isStr(v.id) ? v.id : undefined };
     case "request.cancel":
       if (!isStr(v.id)) throw new ProtocolError("request.cancel needs an id");
       return { type: "request.cancel", id: v.id };
+    case "request.reroute":
+      if (!isStr(v.id) || !v.id) throw new ProtocolError("request.reroute needs an id");
+      if (!optStr(v.project) || !optStr(v.name)) throw new ProtocolError("request.reroute project and name must be strings");
+      if (!(isStr(v.project) && v.project) && !(isStr(v.name) && v.name.trim()))
+        throw new ProtocolError("request.reroute needs a project or a name");
+      return { type: "request.reroute", id: v.id, project: isStr(v.project) && v.project ? v.project : undefined,
+        name: isStr(v.name) && v.name.trim() ? v.name.trim() : undefined };
+    case "projects.list":
+      return { type: "projects.list" };
+    case "projects.save": {
+      const p = v.project;
+      if (!isObj(p) || !isStr(p.name) || !p.name.trim()) throw new ProtocolError("projects.save needs a project with a name");
+      if (!optStr(p.id) || !optStr(p.description)) throw new ProtocolError("project id and description must be strings");
+      if (p.paths !== undefined && (!Array.isArray(p.paths) || !p.paths.every((x) => isStr(x) && x.startsWith("/"))))
+        throw new ProtocolError("project paths must be absolute paths");
+      return { type: "projects.save", project: { id: isStr(p.id) ? p.id : undefined, name: p.name,
+        paths: p.paths as string[] | undefined, description: isStr(p.description) ? p.description : undefined } };
+    }
+    case "projects.remove":
+      if (!isStr(v.id)) throw new ProtocolError("projects.remove needs an id");
+      return { type: "projects.remove", id: v.id };
+    case "rules.save":
+      if (!isStr(v.projectId) || (v.kind !== "url" && v.kind !== "app") || !isStr(v.pattern))
+        throw new ProtocolError("rules.save needs a projectId, a kind (url or app) and a pattern");
+      return { type: "rules.save", projectId: v.projectId, kind: v.kind, pattern: v.pattern };
+    case "rules.remove":
+      if (typeof v.id !== "number" || !Number.isInteger(v.id)) throw new ProtocolError("rules.remove needs an id");
+      return { type: "rules.remove", id: v.id };
     case "context.get": {
       const part = v.part ?? "full";
       if (!isStr(v.captureId)) throw new ProtocolError("context.get needs a captureId");
