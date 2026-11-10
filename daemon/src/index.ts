@@ -1,11 +1,13 @@
 import { loadOrCreateToken, superclickHome } from "./auth.ts";
 import { ClaudeCodeAdapter } from "./agents/claudeCode.ts";
 import { QuickModel } from "./agents/quick.ts";
+import { ContextService, RECENT_TOOL } from "./contextMcp.ts";
 import { Coordinator } from "./coordinator.ts";
 import { openDatabase } from "./db.ts";
 import { Journal } from "./journal.ts";
 import { ProjectRegistry } from "./projects.ts";
 import { DEFAULT_PORT, VERSION, startDaemon } from "./server.ts";
+import { RequestStore } from "./store.ts";
 import { SessionManager } from "./sessions.ts";
 
 // Entry point: `bun run start`, or the compiled binary the app runs at login.
@@ -14,10 +16,13 @@ const token = loadOrCreateToken();
 const db = openDatabase();
 const registry = new ProjectRegistry(db);
 const quick = new QuickModel(registry.folder(registry.inbox));
-const sessions = new SessionManager(new ClaudeCodeAdapter(), registry, db, quick);
+const store = new RequestStore();
+const context = new ContextService(store);
+const adapter = new ClaudeCodeAdapter(undefined, { mcpServers: () => context.server(), alsoAllowed: [RECENT_TOOL] });
+const sessions = new SessionManager(adapter, registry, db, quick);
 const coordinator = new Coordinator(registry, db, quick, { summaries: (id) => sessions.summary(id) });
 const journal = new Journal(db);
-const { server } = startDaemon({ token, port, sessions, coordinator, journal });
+const { server } = startDaemon({ token, port, store, sessions, coordinator, journal, context });
 console.log(`[superclick] daemon ${VERSION} listening on ws://127.0.0.1:${server.port}/v1`);
 console.log(`[superclick] data in ${superclickHome()}`);
 

@@ -63,6 +63,9 @@ final class BubbleController: NSObject, NSWindowDelegate {
             lastExternalApp = front
         }
         daemon.onOrphanRun = { [weak self] snap in self?.adopt(snap) }
+        daemon.onCaptureRequest = { [weak self] id, screenshot, fullPage in
+            self?.captureForAgent(requestID: id, screenshot: screenshot, fullPage: fullPage)
+        }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -121,6 +124,65 @@ final class BubbleController: NSObject, NSWindowDelegate {
         if m.phase == .done || m.phase == .failed { m.seen = true }
         if let id = m.requestID { Notifier.shared.clear(requestID: id) }
         onBackgroundChange?()
+    }
+
+    /// Called when an agent takes a fresh capture, so the menu bar can show it happened.
+    var onAgentCapture: ((String) -> Void)?
+
+    /// what_am_i_looking_at (M5): the same capture as a summon, with the same
+    /// blocklist and redaction, but no bubble. The agent's call needed the
+    /// user's OK first, and the menu-bar icon shows that a capture happened.
+    private func captureForAgent(requestID: String, screenshot: Bool, fullPage: Bool) {
+        Permissions.shared.refresh()
+        let me = ProcessInfo.processInfo.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        guard let front = (frontmost?.processIdentifier == me ? lastExternalApp : frontmost) ?? lastExternalApp,
+              !front.isTerminated else {
+            daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: "No app is in front.")
+            return
+        }
+        guard Permissions.shared.accessibility else {
+            daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: "Superclick doesn't have Accessibility permission.")
+            return
+        }
+        var settings = SettingsStore.shared.value
+        settings.captureScreenshot = settings.captureScreenshot && screenshot
+        let m = BubbleModel(app: front, summonedAt: now(), settings: settings)
+        m.fullPage = fullPage || settings.wantsFullPage(url: nil)
+        m.start(onReport: { _ in })
+        m.whenCaptured { [weak self, weak m] in
+            guard let self, let m else { return }
+            let b = m.bundle
+            defer { m.markClosed(keepScreenshot: false) }
+            if let reason = b.blockedReason {
+                self.daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: reason)
+                return
+            }
+            var markdown = PromptText.render(request: "", bundle: b, fullPage: m.fullPage || settings.wantsFullPage(url: b.url))
+            markdown = markdown.replacingOccurrences(of: #"- Screenshot: [^
+]*
+?"#, with: "", options: .regularExpression)
+            let jpeg = b.screenshotPath.flatMap { Self.jpegBase64(path: $0) }
+            self.daemon.sendCapture(requestID: requestID, markdown: markdown, screenshot: jpeg, refused: nil)
+            self.onAgentCapture?(b.app.name)
+        }
+    }
+
+    /// The screenshot, scaled so its long side is at most 1568 px, as base64 JPEG.
+    static func jpegBase64(path: String) -> String? {
+        let url = URL(fileURLWithPath: path) as CFURL
+        guard let src = CGImageSourceCreateWithURL(url, nil) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1568,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, img, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return (data as Data).base64EncodedString()
     }
 
     /// A request the daemon is running that this app doesn't know (it restarted mid-request).
@@ -184,7 +246,7 @@ final class BubbleController: NSObject, NSWindowDelegate {
             onClose: { [weak self] in self?.close() },
             onPaste: { [weak self] in self?.paste() },
             onApproval: { [weak self] allow in self?.answerApproval(allow: allow) },
-            onMove: { [weak self] id, name in self?.move(projectID: id, name: name) },
+            onMove: { [weak self] id, name, learn in self?.move(projectID: id, name: name, learn: learn) },
             onStop: { [weak self] in self?.stop() },
             onHeightChange: { [weak self] h in self?.resize(height: h) })
         let hosting = NSHostingView(rootView: view)
@@ -284,11 +346,15 @@ final class BubbleController: NSObject, NSWindowDelegate {
     }
 
     /// Moves the request to another project, by id or by a typed name (new if none has it).
-    private func move(projectID: String?, name: String?) {
+    private func move(projectID: String?, name: String?, learn: Bool) {
         guard let model, let id = model.requestID else { return }
-        if projectID == model.route?.projectID { model.settleRoute(); return }
+        if projectID != nil && projectID == model.route?.projectID { model.settleRoute(); return }
+        guard daemon.isConnected else {
+            model.status = "The daemon isn't connected, so the request can't be moved right now."
+            return
+        }
         model.beginMove()
-        daemon.reroute(requestID: id, projectID: projectID, name: name) { [weak model] e in model?.apply(e) }
+        daemon.reroute(requestID: id, projectID: projectID, name: name, learn: learn) { [weak model] e in model?.apply(e) }
     }
 
     /// Stops the running turn. The daemon answers with a "Cancelled." error.

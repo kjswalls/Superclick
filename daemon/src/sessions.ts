@@ -19,6 +19,8 @@ export interface SessionInfo {
  */
 export class SessionManager {
   private sessions = new Map<string, AgentSession>();
+  /** Summary updates run one after another per project, so two finishing turns can't overwrite each other. */
+  private summaryChain = new Map<string, Promise<void>>();
 
   constructor(
     private readonly adapter: AgentAdapter,
@@ -45,12 +47,14 @@ export class SessionManager {
     return s;
   }
 
-  /** Forgets a project's session (it was removed, or its folder changed). */
+  /** Ends a project's session (it was removed, or its folder changed): its turns stop and its approvals are denied. */
   drop(projectId: string) {
+    this.sessions.get(projectId)?.cancel();
     this.sessions.delete(projectId);
   }
 
   private saveSessionId(projectId: string, id: string) {
+    if (!this.registry.get(projectId)) return;
     this.db.query(
       "INSERT INTO sessions (project_id, agent, sdk_session_id, updated_at) VALUES (?, ?, ?, ?) " +
       "ON CONFLICT (project_id) DO UPDATE SET sdk_session_id = excluded.sdk_session_id, updated_at = excluded.updated_at",
@@ -69,7 +73,14 @@ export class SessionManager {
   }
 
   /** Updates the running summary after a turn. Never blocks the reply; a failed model call keeps the last summary. */
-  async updateSummary(projectId: string, request: string, answer: string): Promise<void> {
+  updateSummary(projectId: string, request: string, answer: string): Promise<void> {
+    const next = (this.summaryChain.get(projectId) ?? Promise.resolve()).then(() => this.writeSummary(projectId, request, answer), () => {});
+    this.summaryChain.set(projectId, next);
+    return next;
+  }
+
+  private async writeSummary(projectId: string, request: string, answer: string): Promise<void> {
+    if (!this.registry.get(projectId)) return;
     const previous = this.summary(projectId);
     const fallback = `Last asked: ${request.split("\n")[0]!.slice(0, 160)}`;
     const next = (await this.summarizer?.summarize(previous, request, answer).catch(() => undefined)) ?? (previous || fallback);

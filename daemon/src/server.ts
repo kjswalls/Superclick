@@ -13,6 +13,7 @@ import {
   type RunSnapshot,
   type ServerMessage,
 } from "./protocol.ts";
+import type { ContextService, FreshCapture } from "./contextMcp.ts";
 import type { Journal } from "./journal.ts";
 import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
@@ -29,6 +30,10 @@ export interface DaemonOptions {
   coordinator?: Coordinator;
   /** The event log behind the catch-up cards (M4). */
   journal?: Journal;
+  /** The context MCP server's link to the app (M5). */
+  context?: ContextService;
+  /** How long the app gets to answer a capture request. */
+  captureTimeoutMs?: number;
   log?: (line: string) => void;
 }
 
@@ -77,7 +82,26 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
     for (const ws of clients) send(ws, m);
   };
   const runs = new Map<string, Run>();
+  /** Requests still being routed, so Stop works before their run starts. */
+  const starting = new Map<string, AbortController>();
   const finished = new Map<string, RunSnapshot>();
+  const captures = new Map<string, { resolve: (r: FreshCapture) => void; from: ServerWebSocket<Conn> }>();
+
+  if (opts.context) {
+    opts.context.capture = ({ screenshot, fullPage }) => new Promise<FreshCapture>((resolve) => {
+      // The Mac app that said hello most recently does the capture.
+      const app = [...clients].reverse().find((ws) => ws.data.client?.startsWith("superclick-mac"));
+      if (!app) return resolve({ markdown: "", refused: "The Superclick app isn't running." });
+      const requestId = crypto.randomUUID();
+      const timer = setTimeout(() => {
+        captures.delete(requestId);
+        resolve({ markdown: "", refused: "The Superclick app didn't answer in time." });
+      }, opts.captureTimeoutMs ?? 15_000);
+      captures.set(requestId, { from: app, resolve: (r) => { clearTimeout(timer); captures.delete(requestId); resolve(r); } });
+      log(`capture requested by an agent (screenshot: ${screenshot})`);
+      send(app, { type: "capture.request", requestId, screenshot, fullPage });
+    });
+  }
   let generation = 0;
 
   const snapshots = (): RunSnapshot[] => {
@@ -205,12 +229,21 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
   async function startRequest(msg: Extract<ClientMessage, { type: "request" }>) {
     const c = msg.context;
     const coordinator = opts.coordinator!;
+    // Stop works while the request is still being routed (the classifier can take seconds).
+    const routing = new AbortController();
+    starting.set(msg.id, routing);
     let decision: RouteDecision;
     try {
       decision = await coordinator.route({ id: msg.id, text: msg.text, context: c, project: msg.project });
     } catch (e) {
       log(`routing failed for ${msg.id}: ${e instanceof Error ? e.message : String(e)}`);
       decision = { project: coordinator.registry.inbox, step: "fallback", reason: "routing failed", ask: [] };
+    } finally {
+      starting.delete(msg.id);
+    }
+    if (routing.signal.aborted) {
+      broadcast({ type: "reply.error", id: msg.id, message: "Cancelled." });
+      return;
     }
     coordinator.noteRouted({ id: msg.id, text: msg.text, context: c }, decision);
     await run(msg.id, msg.prompt ?? msg.text, msg.text, c, decision);
@@ -218,26 +251,27 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
 
   async function reroute(ws: ServerWebSocket<Conn>, msg: Extract<ClientMessage, { type: "request.reroute" }>) {
     const coordinator = opts.coordinator!;
+    // Every failure lands on the request's own bubble, so it never sits on "Moving…".
+    const fail = (message: string) => send(ws, { type: "reply.error", id: msg.id, message });
     const stored = store.byRequest(msg.id);
-    if (!stored) {
-      send(ws, { type: "error", error: "unknown_request", detail: "That request is too old to move. Ask again." });
-      return;
-    }
+    if (!stored) return fail("That request is too old to move. Ask again.");
     const reg = coordinator.registry;
     let to = msg.project ? reg.get(msg.project) : undefined;
     let made = false;
     if (!to && msg.name) {
       to = reg.byName(msg.name);
       if (!to) {
-        to = reg.save({ name: msg.name, description: `Started from: ${stored.text.slice(0, 120)}` });
+        try {
+          to = reg.save({ name: msg.name, description: `Started from: ${stored.text.slice(0, 120)}` });
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
+        }
         made = true;
       }
     }
-    if (!to) {
-      send(ws, { type: "error", error: "unknown_project", detail: msg.project ?? msg.name });
-      return;
-    }
-    const rule = coordinator.learnFromReroute(stored.context, to);
+    if (!to) return fail("That project no longer exists.");
+    // The low-confidence chooser answers one question; only a deliberate move teaches a rule.
+    const rule = msg.learn === false ? undefined : coordinator.learnFromReroute(stored.context, to);
     const decision: RouteDecision = {
       project: to,
       step: "explicit",
@@ -307,6 +341,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
         return;
       }
       case "request.cancel":
+        starting.get(msg.id)?.abort();
         runs.get(msg.id)?.abort.abort();
         return;
       case "context.get":
@@ -315,6 +350,13 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
       case "projects.list":
         send(ws, { type: "projects", projects: projectInfo() });
         return;
+      case "capture.result": {
+        const waiting = captures.get(msg.requestId);
+        // Only the app that was asked can answer.
+        if (!waiting || waiting.from !== ws) return;
+        waiting.resolve({ markdown: msg.markdown ?? "", screenshot: msg.screenshot, refused: msg.refused });
+        return;
+      }
       case "catchup.get": {
         const reg = opts.coordinator?.registry;
         if (!reg || !opts.journal) return send(ws, { type: "catchup", since: msg.since, cards: [] });
@@ -395,6 +437,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
       },
       close(ws) {
         clients.delete(ws);
+        for (const c of captures.values()) if (c.from === ws) c.resolve({ markdown: "", refused: "The Superclick app disconnected." });
         if (ws.data.client) log(`disconnected: ${ws.data.client}`);
       },
     },

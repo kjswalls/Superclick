@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeSession } from "../src/agents/claudeCode.ts";
 import type { Classification } from "../src/agents/quick.ts";
 import { findMention, stripMention } from "../src/coordinator.ts";
-import { INBOX_ID, normalizeURL, ruleForURL, urlMatches } from "../src/projects.ts";
+import { INBOX_ID, glob, normalizeURL, ruleForURL, urlMatches } from "../src/projects.ts";
 import { parseContext } from "../src/protocol.ts";
 import { bundle, world } from "./fixtures.ts";
 
@@ -74,20 +74,24 @@ describe("routing steps", () => {
     expect(c.project.id).toBe(blog.id);
   });
 
-  test("4. a follow-up within a few minutes goes to the same project", async () => {
+  test("4. a follow-up from the same app within a few minutes goes to the same project", async () => {
     let t = 1_000_000;
     const w = world(adapter, { clock: () => t });
     const shop = w.registry.save({ name: "shop" });
     const first = { id: "1", text: "@shop explain the checkout flow", context: ctx({ windowTitle: "Docs" }) };
     w.coordinator.noteRouted(first, await w.coordinator.route(first));
     t += 60_000;
-    const d = await w.coordinator.route({ id: "2", text: "and what about refunds?", context: ctx({ windowTitle: "Other" }) });
+    const d = await w.coordinator.route({ id: "2", text: "what about refunds?", context: ctx({ windowTitle: "Other" }) });
     expect(d).toMatchObject({ step: "recent" });
     expect(d.project.id).toBe(shop.id);
     const same = await w.coordinator.route({ id: "3", text: "summarize", context: ctx({ windowTitle: "Docs" }) });
     expect(same.step).toBe("recent");
+    // A new question from another app isn't a follow-up, however it starts.
+    const mail = ctx({ app: { name: "Mail", bundleID: "com.apple.mail", pid: 2 }, windowTitle: "Inbox" });
+    expect((await w.coordinator.route({ id: "4", text: "why is the sky blue", context: mail })).step).toBe("fallback");
+    expect((await w.coordinator.route({ id: "5", text: "why is the sky blue", context: ctx({ windowTitle: "Other" }) })).step).toBe("fallback");
     t += 10 * 60_000;
-    expect((await w.coordinator.route({ id: "4", text: "and refunds?", context: ctx() })).step).toBe("fallback");
+    expect((await w.coordinator.route({ id: "6", text: "what about refunds?", context: ctx() })).step).toBe("fallback");
   });
 
   test("5. the model picks a project when it's confident", async () => {
@@ -138,22 +142,28 @@ describe("reroutes teach rules", () => {
     expect(r).toMatchObject({ kind: "url", pattern: "github.com/me/shop/*", source: "reroute" });
   });
 
-  test("a non-generic app teaches an app rule; browsers, terminals, Inbox and folders teach nothing", () => {
+  test("reroutes never teach app rules, broad site rules, or anything for Inbox or folders", () => {
     const w = world(adapter);
     const shop = w.registry.save({ name: "shop" });
-    expect(w.coordinator.learnFromReroute(ctx({ app: { name: "Figma", bundleID: "com.figma.Desktop", pid: 1 } }), shop)?.kind).toBe("app");
-    expect(w.coordinator.learnFromReroute(ctx({ app: { name: "Safari", bundleID: "com.apple.Safari", pid: 1 } }), shop)).toBeUndefined();
-    expect(w.coordinator.learnFromReroute(ctx({ url: "https://x.com/a" }), w.registry.inbox)).toBeUndefined();
-    expect(w.coordinator.learnFromReroute(ctx({ cwd: "/tmp", url: "https://x.com/a" }), shop)).toBeUndefined();
+    const learn = (over: Record<string, unknown>, to = shop) => w.coordinator.learnFromReroute(ctx(over), to);
+    expect(learn({ app: { name: "Mail", bundleID: "com.apple.mail", pid: 1 } })).toBeUndefined();
+    expect(learn({ url: "https://github.com/notifications" })).toBeUndefined();
+    expect(learn({ url: "http://localhost:3000/admin" })).toBeUndefined();
+    expect(learn({ url: "https://news.site/" })).toBeUndefined();
+    expect(learn({ url: "https://mail.google.com/mail/u/0/#inbox" })).toBeUndefined();
+    expect(learn({ url: "https://x.com/a" }, w.registry.inbox)).toBeUndefined();
+    expect(learn({ cwd: "/tmp", url: "https://x.com/a" })).toBeUndefined();
+    expect(learn({ url: "https://docs.google.com/document/d/abc123/edit" })?.pattern).toBe("docs.google.com/document/d/abc123/*");
+    expect(learn({ url: "https://blog.example.com/posts/1" })?.pattern).toBe("blog.example.com/posts/*");
   });
 
   test("a newer reroute for the same pattern replaces the old rule", () => {
     const w = world(adapter);
     const a = w.registry.save({ name: "a" });
     const b = w.registry.save({ name: "b" });
-    w.coordinator.learnFromReroute(ctx({ url: "https://news.site/x" }), a);
-    w.coordinator.learnFromReroute(ctx({ url: "https://news.site/y" }), b);
-    expect(w.registry.rules().map((r) => [r.pattern, r.projectId])).toEqual([["news.site/*", b.id]]);
+    w.coordinator.learnFromReroute(ctx({ url: "https://news.site/x/1" }), a);
+    w.coordinator.learnFromReroute(ctx({ url: "https://news.site/x/2" }), b);
+    expect(w.registry.rules().map((r) => [r.pattern, r.projectId])).toEqual([["news.site/x/*", b.id]]);
   });
 });
 
@@ -190,6 +200,43 @@ describe("registry", () => {
   });
 });
 
+describe("path safety", () => {
+  test("a symlinked or differently cased path to a project is the same project", async () => {
+    const w = world(adapter);
+    const shop = repo();
+    const first = await w.coordinator.route({ id: "1", text: "x", context: ctx({ cwd: shop }) });
+    const link = join(mkdtempSync(join(tmpdir(), "link-")), "shop");
+    symlinkSync(shop, link);
+    const viaLink = await w.coordinator.route({ id: "2", text: "x", context: ctx({ cwd: link }) });
+    expect(viaLink.project.id).toBe(first.project.id);
+    expect(w.registry.list()).toHaveLength(2);
+  });
+
+  test("the home folder is never adopted as a project, and a removed repo stays removed", async () => {
+    const w = world(adapter);
+    const home = homedir();
+    expect(w.registry.adoptRepo(home)).toBeUndefined();
+    expect(w.registry.adoptRepo("/")).toBeUndefined();
+    const shop = repo();
+    const p = w.registry.adoptRepo(shop)!;
+    w.registry.remove(p.id);
+    expect(w.registry.adoptRepo(shop)).toBeUndefined();
+    expect((await w.coordinator.route({ id: "1", text: "x", context: ctx({ cwd: shop }) })).step).toBe("fallback");
+    // Adding it back by hand works.
+    w.registry.save({ name: "shop", paths: [shop] });
+    expect((await w.coordinator.route({ id: "2", text: "x", context: ctx({ cwd: shop }) })).step).toBe("path");
+  });
+
+  test("URL globs run in linear time", () => {
+    const url = "a/".repeat(1000) + "b";
+    const t = performance.now();
+    expect(urlMatches("*/*/*/*/*/*/*/shop/*", url)).toBe(false);
+    expect(performance.now() - t).toBeLessThan(50);
+    expect(glob("a*b*c", "axxbyyc")).toBe(true);
+    expect(glob("a*b*c", "axxbyy")).toBe(false);
+  });
+});
+
 describe("helpers", () => {
   test("mentions", () => {
     expect(findMention("@shop fix it")).toBe("shop");
@@ -207,6 +254,6 @@ describe("helpers", () => {
     expect(urlMatches("github.com/me/shop/*", "github.com/me/shopping")).toBe(false);
     expect(urlMatches("*.example.com/*", "docs.example.com/a")).toBe(true);
     expect(ruleForURL("https://github.com/me/shop/pull/3")).toBe("github.com/me/shop/*");
-    expect(ruleForURL("https://blog.example.com/post/1")).toBe("blog.example.com/*");
+    expect(ruleForURL("https://blog.example.com/post/1")).toBe("blog.example.com/post/*");
   });
 });

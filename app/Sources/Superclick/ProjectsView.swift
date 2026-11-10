@@ -72,6 +72,9 @@ private struct ProjectRow: View {
     @State private var rulePattern = ""
     @State private var ruleKind = "url"
     @State private var confirmRemove = false
+    @FocusState private var focus: Field?
+
+    enum Field { case name, description }
 
     var body: some View {
         Section {
@@ -79,6 +82,7 @@ private struct ProjectRow: View {
                 TextField("Name", text: $name)
                     .font(.headline)
                     .disabled(project.isInbox)
+                    .focused($focus, equals: .name)
                     .onSubmit(save)
                 Spacer()
                 if !project.isInbox {
@@ -89,6 +93,7 @@ private struct ProjectRow: View {
             }
             TextField("One line on what it's about (helps routing)", text: $description, axis: .vertical)
                 .lineLimit(1...3)
+                .focused($focus, equals: .description)
                 .onSubmit(save)
             HStack(alignment: .firstTextBaseline) {
                 Text(project.paths.first.map(Self.tilde) ?? "No folder")
@@ -139,7 +144,12 @@ private struct ProjectRow: View {
             }
         }
         .onAppear(perform: load)
-        .onChange(of: project) { _, _ in load() }
+        // A push from the daemon (a summary changed, say) must not overwrite what's being typed.
+        .onChange(of: project.name) { _, v in if focus != .name { name = v } }
+        .onChange(of: project.description) { _, v in if focus != .description { description = v } }
+        // Saved when you leave a field, press Enter, or close the window.
+        .onChange(of: focus) { old, _ in if old != nil { save() } }
+        .onDisappear(perform: save)
         .confirmationDialog("Remove \(project.name)?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { daemon.removeProject(id: project.id) }
         } message: {

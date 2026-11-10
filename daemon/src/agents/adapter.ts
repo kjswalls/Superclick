@@ -38,6 +38,8 @@ export interface AgentSession {
   send(input: SendInput): AsyncIterable<AgentEvent>;
   approve(approvalId: string, decision: Approval): boolean;
   readonly isBusy: boolean;
+  /** Stops the running turn and any queued ones. */
+  cancel(): void;
   /** A running summary the coordinator can read (M3 routing, M4 catch-up cards). */
   summary(): string;
 }

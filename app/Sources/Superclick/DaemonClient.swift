@@ -129,6 +129,8 @@ final class DaemonClient: ObservableObject {
     /// A request the daemon is running that no bubble knows about (the app restarted). The
     /// controller makes a bubble for it so its answer and approvals aren't lost.
     var onOrphanRun: ((RunSnapshot) -> Void)?
+    /// An agent called what_am_i_looking_at (M5): capture the front window and answer with `sendCapture`.
+    var onCaptureRequest: ((_ requestID: String, _ screenshot: Bool, _ fullPage: Bool) -> Void)?
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .ephemeral)
     private var retry: Task<Void, Never>?
@@ -202,6 +204,11 @@ final class DaemonClient: ObservableObject {
             return
         case "error":
             lastError = obj["detail"] as? String ?? obj["error"] as? String
+            return
+        case "capture.request":
+            if let rid = obj["requestId"] as? String {
+                onCaptureRequest?(rid, obj["screenshot"] as? Bool ?? true, obj["fullPage"] as? Bool ?? false)
+            }
             return
         case "catchup":
             catchUp = (obj["cards"] as? [[String: Any]] ?? []).compactMap(Self.card)
@@ -348,8 +355,10 @@ final class DaemonClient: ObservableObject {
 
     /// Moves a request to another project: an existing one by id, or by a typed name (new if no project has it).
     /// The request's events keep coming to the same handler, starting with a new `accepted`.
-    func reroute(requestID: String, projectID: String?, name: String?, onEvent: @escaping (ReplyEvent) -> Void) {
+    func reroute(requestID: String, projectID: String?, name: String?, learn: Bool = true,
+                 onEvent: @escaping (ReplyEvent) -> Void) {
         var msg: [String: Any] = ["type": "request.reroute", "id": requestID]
+        if !learn { msg["learn"] = false }
         if let projectID { msg["project"] = projectID }
         if let name, !name.isEmpty { msg["name"] = name }
         handlers[requestID] = onEvent
@@ -357,6 +366,15 @@ final class DaemonClient: ObservableObject {
     }
 
     func refreshProjects() { send(["type": "projects.list"]) }
+
+    /// Answers a capture request: the capture as Markdown, a base64 JPEG, or why nothing was captured.
+    func sendCapture(requestID: String, markdown: String?, screenshot: String?, refused: String?) {
+        var msg: [String: Any] = ["type": "capture.result", "requestId": requestID]
+        if let markdown { msg["markdown"] = markdown }
+        if let screenshot { msg["screenshot"] = screenshot }
+        if let refused { msg["refused"] = refused }
+        send(msg)
+    }
 
     func fetchCatchUp(since: Date) {
         catchUpLoaded = false

@@ -143,6 +143,10 @@ describe("auto-allowed tools", () => {
     expect(readStaysInside("Glob", { pattern: "/Users/me/.ssh/*" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "~/.ssh/*" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "**/*.ts" }, "/p")).toBe(true);
+    expect(readStaysInside("Glob", { pattern: "*/../../../../etc/*" }, "/p")).toBe(false);
+    expect(readStaysInside("Glob", { pattern: "{/Users/me/.ssh,x}/*" }, "/p")).toBe(false);
+    expect(readStaysInside("Grep", { pattern: "a..b", glob: "../*" }, "/p")).toBe(false);
+    expect(readStaysInside("Grep", { pattern: "a..b" }, "/p")).toBe(true);
     expect(readStaysInside("Bash", { command: "ls" }, "/p")).toBe(false);
   });
 
@@ -189,3 +193,38 @@ describe("auto-allowed tools", () => {
     for (const t of ["WebFetch", "WebSearch", "Bash", "Write", "Edit"]) expect(READ_ONLY_TOOLS.has(t)).toBe(false);
   });
 });
+
+test("cancel stops a running turn and a queued one", async () => {
+  const fake: QueryFn = async function* (p) {
+    await new Promise<void>((r) => p.options!.abortController!.signal.addEventListener("abort", () => r()));
+    throw new Error("aborted");
+  };
+  const s = new ClaudeCodeSession("/tmp/x", fake);
+  const a = collect(s.send({ prompt: "a" }));
+  await Bun.sleep(5);
+  const b = collect(s.send({ prompt: "b" }));
+  await Bun.sleep(5);
+  s.cancel();
+  const [ea, eb] = await Promise.all([a, b]);
+  expect(ea.at(-1)).toMatchObject({ type: "error", message: "Cancelled." });
+  expect(eb.at(-1)).toMatchObject({ type: "error", message: "Cancelled." });
+});
+
+test("a queued turn can be stopped while it waits", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const fake: QueryFn = async function* () {
+    await gate;
+    yield result("ok") as any;
+  };
+  const s = new ClaudeCodeSession("/tmp/x", fake);
+  const first = collect(s.send({ prompt: "a" }));
+  const stop = new AbortController();
+  const second = collect(s.send({ prompt: "b", signal: stop.signal }));
+  await Bun.sleep(5);
+  stop.abort();
+  expect((await second).at(-1)).toMatchObject({ type: "error", message: "Cancelled." });
+  release();
+  expect((await first).at(-1)).toMatchObject({ type: "done" });
+});
+

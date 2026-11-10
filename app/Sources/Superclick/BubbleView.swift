@@ -11,8 +11,8 @@ struct BubbleView: View {
     var onClose: () -> Void
     var onPaste: () -> Void
     var onApproval: (Bool) -> Void
-    /// Move the request: a project id, or a typed name.
-    var onMove: (String?, String?) -> Void
+    /// Move the request: a project id or a typed name, and whether the move should teach a rule.
+    var onMove: (String?, String?, Bool) -> Void
     var onStop: () -> Void
     var onHeightChange: (CGFloat) -> Void
 
@@ -117,7 +117,7 @@ struct ReplyView: View {
     var projects: [ProjectInfo]
     var onPaste: () -> Void
     var onApproval: (Bool) -> Void
-    var onMove: (String?, String?) -> Void
+    var onMove: (String?, String?, Bool) -> Void
     var onStop: () -> Void
     @FocusState private var replyFocused: Bool
     @FocusState private var moveFocused: Bool
@@ -199,7 +199,7 @@ struct ReplyView: View {
         Menu {
             Section("Move to") {
                 ForEach(projects.filter { $0.id != model.route?.projectID }) { p in
-                    Button(p.name) { onMove(p.id, nil) }
+                    Button(p.name) { onMove(p.id, nil, true) }
                 }
             }
             Divider()
@@ -227,8 +227,9 @@ struct ReplyView: View {
             Text("Not sure where this goes:")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+            // Answering the question moves this request only; it doesn't teach a rule.
             ForEach(r.ask) { p in
-                Button(p.name) { onMove(p.id, nil) }
+                Button(p.name) { onMove(p.id, nil, false) }
             }
             Button("Keep in \(r.project)") { model.settleRoute() }
             Button("Other…") {
@@ -259,9 +260,9 @@ struct ReplyView: View {
         let name = model.moveName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         if let p = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-            onMove(p.id, nil)
+            onMove(p.id, nil, true)
         } else {
-            onMove(nil, name)
+            onMove(nil, name, true)
         }
     }
 

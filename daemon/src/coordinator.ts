@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { dirname } from "node:path";
 import type { Classifier } from "./agents/quick.ts";
-import { INBOX_ID, canLearnAppRule, gitRoot, isDir, ruleForURL, type Project, type ProjectRegistry, type Rule } from "./projects.ts";
+import { INBOX_ID, gitRoot, isDir, ruleForURL, type Project, type ProjectRegistry, type Rule } from "./projects.ts";
 import type { ContextBundle } from "./protocol.ts";
 
 // The coordinator's routing (SPEC "Coordinator and inbox"). First match wins,
@@ -32,7 +32,8 @@ export interface RouteRequest {
   project?: string;
 }
 
-const FOLLOW_UP = /^(and|also|now|then|ok(ay)?|thanks|what about|how about|try|do it|go ahead|yes|yep|no|nope|it|that|same|again|undo|continue|more|but|why)\b/i;
+/** Words that only make sense as a reply to the last request. Deliberately narrow: "why …" or "it …" start new questions too. */
+const FOLLOW_UP = /^(and (also|then|now)|also,? (can|could|do|make|add)|what about|how about|do it|go ahead|yes,? (do|go|please)|undo (that|it)|try again|again|continue|keep going|same (for|with))\b/i;
 
 /** "@shop fix the test" → "shop". Only a mention at a word start counts, not an email address. */
 export function findMention(text: string): string | undefined {
@@ -104,22 +105,21 @@ export class Coordinator {
       const p = reg.matchPath(start);
       if (p) return decide(p, "path", `${where} is in ${p.paths.find((f) => start.startsWith(f)) ?? p.name}`);
       const root = isDir(start) ? gitRoot(start) : undefined;
-      if (root) {
-        const made = reg.adoptRepo(root);
-        return decide(made, "path", `${where} is in the git repo ${root} (new project)`);
-      }
+      const made = root ? reg.adoptRepo(root) : undefined;
+      if (made) return decide(made, "path", `${where} is in the git repo ${root} (new project)`);
     }
 
     // 3. App or URL rule.
     const hit = c && !c.blockedReason ? reg.matchRule(c.url, c.app.bundleID) : undefined;
     if (hit) return decide(hit.project, "rule", `${hit.rule.kind === "url" ? "site" : "app"} rule ${hit.rule.pattern}`);
 
-    // 4. Recent focus: a follow-up to the last request, from the same place or worded like one.
+    // 4. Recent focus: a follow-up to the last request, from the same app, and
+    // either the same window or worded like a follow-up.
     const f = this.focus;
-    if (f && this.now - f.at < (this.opts.recentMs ?? 5 * 60 * 1000)) {
+    if (f && c && this.now - f.at < (this.opts.recentMs ?? 5 * 60 * 1000) && c.app.bundleID === f.bundleID) {
       const p = reg.get(f.projectId);
-      const samePlace = !!c && c.app.bundleID === f.bundleID && !!placeOf(c) && placeOf(c) === f.place;
-      const worded = FOLLOW_UP.test(req.text.trim()) && !c?.selection;
+      const samePlace = !!placeOf(c) && placeOf(c) === f.place;
+      const worded = FOLLOW_UP.test(req.text.trim()) && !c.selection;
       if (p && (samePlace || worded)) return decide(p, "recent", samePlace ? "same window as your last request" : "follow-up to your last request");
     }
 
@@ -163,11 +163,11 @@ export class Coordinator {
    */
   learnFromReroute(context: ContextBundle | undefined, to: Project): Rule | undefined {
     if (!context || context.blockedReason || to.id === INBOX_ID) return undefined;
-    if (context.cwd || context.filePath) return undefined; // folders route by path; add the folder in Settings instead
+    if (context.cwd || context.filePath) return undefined; // folders route by path; add the folder in Projects instead
+    // Only narrow URL rules. An app rule from one reroute ("all of Mail goes to
+    // shop") is too broad to learn silently; app rules are added in Projects.
     const pattern = context.url ? ruleForURL(context.url) : undefined;
-    if (pattern) return this.registry.addRule(to.id, "url", pattern, "reroute");
-    if (!context.url && canLearnAppRule(context.app.bundleID)) return this.registry.addRule(to.id, "app", context.app.bundleID!, "reroute");
-    return undefined;
+    return pattern ? this.registry.addRule(to.id, "url", pattern, "reroute") : undefined;
   }
 
   /** Projects used most recently, newest first. */

@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS events (
   payload TEXT NOT NULL,
   at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS forgotten (
+  path TEXT PRIMARY KEY
+);
 CREATE INDEX IF NOT EXISTS events_by_request ON events (request_id);
 CREATE INDEX IF NOT EXISTS events_by_project ON events (project_id, at);
 `;

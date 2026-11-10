@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.diagnostics.last = report
         }
         bubble.onBackgroundChange = { [weak self] in self?.updateStatusIcon() }
+        // Visible capture (DECISIONS): when an agent looks at the screen, the menu-bar icon says so.
+        bubble.onAgentCapture = { [weak self] app in self?.showAgentCapture(app) }
         Notifier.shared.setUp()
         Notifier.shared.onAction = { [weak self] requestID, approvalID, action in
             self?.bubble.handle(requestID: requestID, approvalID: approvalID, action: action)
@@ -72,6 +74,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         updateStatusIcon()
+    }
+
+    /// The last time an agent took a capture, for the menu.
+    private var lastAgentCapture: (app: String, at: Date)?
+    private var captureFlash: Task<Void, Never>?
+
+    private func showAgentCapture(_ app: String) {
+        lastAgentCapture = (app, Date())
+        captureFlash?.cancel()
+        statusItem?.button?.image = NSImage(systemSymbolName: "eye", accessibilityDescription: "An agent looked at your screen")
+        statusItem?.button?.image?.isTemplate = true
+        statusItem?.button?.toolTip = "Claude Code just captured \(app)"
+        captureFlash = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.updateStatusIcon()
+        }
     }
 
     private var needsAttention: Bool {
@@ -148,6 +167,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let r = diagnostics.last {
             let page = r.pageSinceHotkeyMs.map { ", page \($0) ms" } ?? ""
             let info = NSMenuItem(title: "Last summon: \(r.visibleMs ?? 0) ms to show\(page)", action: nil, keyEquivalent: "")
+            info.isEnabled = false
+            menu.addItem(info)
+        }
+        if let c = lastAgentCapture {
+            let info = NSMenuItem(title: "Claude Code captured \(c.app) at \(c.at.formatted(date: .omitted, time: .shortened))", action: nil, keyEquivalent: "")
             info.isEnabled = false
             menu.addItem(info)
         }

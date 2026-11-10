@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { superclickHome } from "./auth.ts";
 
@@ -55,10 +56,35 @@ export function gitRoot(start: string): string | undefined {
   return undefined;
 }
 
-/** True when `path` is `folder` or inside it. */
+/**
+ * A path in a form that compares reliably: symlinks followed (for the part that
+ * exists), and case folded on macOS, whose volumes are case-insensitive by default.
+ */
+export function canonical(path: string): string {
+  let p = resolve(path);
+  let rest = "";
+  // realpath only works on what exists; resolve the longest existing prefix.
+  for (let i = 0; i < 64; i++) {
+    try {
+      p = realpathSync(p) + rest;
+      break;
+    } catch {
+      const up = dirname(p);
+      if (up === p) {
+        p = p + rest;
+        break;
+      }
+      rest = sep + basename(p) + rest;
+      p = up;
+    }
+  }
+  return process.platform === "darwin" ? p.toLowerCase() : p;
+}
+
+/** True when `path` is `folder` or inside it, after following symlinks. */
 export function within(path: string, folder: string): boolean {
-  const p = resolve(path);
-  const f = resolve(folder);
+  const p = canonical(path);
+  const f = canonical(folder);
   return p === f || p.startsWith(f.endsWith(sep) ? f : f + sep);
 }
 
@@ -75,41 +101,67 @@ export function normalizeURL(url: string): string | undefined {
   }
 }
 
+/** `*` matches any run of characters. Linear time (no regex), so no pattern can stall the daemon. */
+export function glob(pattern: string, text: string): boolean {
+  let p = 0, t = 0, star = -1, mark = 0;
+  while (t < text.length) {
+    if (p < pattern.length && pattern[p] === "*") {
+      star = p++;
+      mark = t;
+    } else if (p < pattern.length && pattern[p] === text[t]) {
+      p++;
+      t++;
+    } else if (star >= 0) {
+      p = star + 1;
+      t = ++mark;
+    } else {
+      return false;
+    }
+  }
+  while (p < pattern.length && pattern[p] === "*") p++;
+  return p === pattern.length;
+}
+
 /** A glob over normalized URLs: `*` is any run of characters; "a/*" also matches "a". */
 export function urlMatches(pattern: string, url: string): boolean {
   const p = pattern.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "");
-  const esc = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  const body = p.endsWith("/*") ? `${esc(p.slice(0, -2))}(/.*)?` : esc(p);
-  return new RegExp(`^${body}$`).test(url.toLowerCase());
+  const u = url.toLowerCase().slice(0, 2048);
+  if (p.endsWith("/*") && u === p.slice(0, -2)) return true;
+  return glob(p, u);
 }
 
 const CODE_HOSTS = new Set(["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"]);
+/** Sites where one host holds everyone's documents, so a rule must name the document. */
+const SHARED_HOSTS = [
+  /(^|\.)google\.com$/, /(^|\.)notion\.(so|site)$/, /(^|\.)figma\.com$/, /(^|\.)slack\.com$/, /(^|\.)atlassian\.net$/,
+  /(^|\.)linear\.app$/, /(^|\.)dropbox\.com$/, /(^|\.)office\.com$/, /(^|\.)sharepoint\.com$/, /(^|\.)live\.com$/,
+  /(^|\.)icloud\.com$/, /(^|\.)x\.com$/, /(^|\.)twitter\.com$/, /(^|\.)reddit\.com$/, /(^|\.)youtube\.com$/,
+  /(^|\.)linkedin\.com$/, /(^|\.)medium\.com$/, /(^|\.)substack\.com$/, /(^|\.)discord\.com$/, /(^|\.)claude\.ai$/,
+];
+
+/** Mail, chat and calendars: every message is about something different, so nothing is learned there. */
+const NEVER_LEARN = [
+  /^mail\./, /^outlook\./, /^calendar\./, /^chat\./, /^web\.whatsapp\.com$/, /^messages\./, /^teams\./,
+  /(^|\.)slack\.com$/, /(^|\.)discord\.com$/, /(^|\.)telegram\.org$/, /(^|\.)fastmail\.com$/, /(^|\.)proton\.me$/,
+  /(^|\.)superhuman\.com$/, /(^|\.)hey\.com$/,
+];
 
 /**
- * The rule a reroute teaches (SPEC: "Reroutes become new rules"). On code
- * hosts it's the repository ("github.com/me/shop/*"); elsewhere the site.
+ * The rule a reroute teaches (SPEC: "Reroutes become new rules"), or nothing
+ * when no narrow rule fits. On code hosts it's the repository
+ * ("github.com/me/shop/*"); on shared sites, the document; elsewhere the site
+ * and its first path segment. Local addresses and bare hosts teach nothing.
  */
 export function ruleForURL(url: string): string | undefined {
   const n = normalizeURL(url);
   if (!n) return undefined;
-  const [host, ...rest] = n.split("/");
-  if (!host) return undefined;
-  if (CODE_HOSTS.has(host) && rest.length >= 2) return `${host}/${rest[0]}/${rest[1]}/*`;
-  return `${host}/*`;
-}
-
-/** Apps whose window says nothing about the project on its own, so a reroute shouldn't make an app rule. */
-const GENERIC_APPS = new Set([
-  "com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser", "com.microsoft.edgemac",
-  "org.mozilla.firefox", "com.brave.Browser", "com.vivaldi.Vivaldi", "com.operasoftware.Opera",
-  "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
-  "net.kovidgoyal.kitty", "com.github.wez.wezterm", "io.alacritty",
-  "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "dev.zed.Zed", "com.apple.dt.Xcode",
-  "com.jetbrains.intellij", "com.sublimetext.4", "com.apple.finder", "com.apple.TextEdit",
-]);
-
-export function canLearnAppRule(bundleID: string | undefined): boolean {
-  return !!bundleID && !GENERIC_APPS.has(bundleID) && !bundleID.startsWith("com.jetbrains.");
+  const [hostPort, ...rest] = n.split("/").filter((x, i) => i === 0 || x);
+  const host = hostPort?.split(":")[0];
+  if (!host || host === "localhost" || /^[\d.]+$/.test(host) || host.endsWith(".local") || host.includes("[")) return undefined;
+  if (NEVER_LEARN.some((r) => r.test(host))) return undefined;
+  if (CODE_HOSTS.has(host)) return rest.length >= 2 ? `${host}/${rest[0]}/${rest[1]}/*` : undefined;
+  if (SHARED_HOSTS.some((r) => r.test(host))) return rest.length >= 3 ? `${host}/${rest.slice(0, 3).join("/")}/*` : undefined;
+  return rest.length >= 1 ? `${host}/${rest[0]}/*` : undefined;
 }
 
 interface ProjectRow {
@@ -178,6 +230,7 @@ export class ProjectRegistry {
     const clash = this.byName(name);
     if (clash && clash.id !== existing?.id) throw new Error(`There's already a project called ${clash.name}.`);
     const paths = (p.paths ?? existing?.paths ?? []).map((x) => resolve(x)).filter((x, i, a) => a.indexOf(x) === i);
+    for (const x of paths) this.db.query("DELETE FROM forgotten WHERE path = ?").run(canonical(x));
     if (existing) {
       if (existing.id === INBOX_ID && name.toLowerCase() !== "inbox") throw new Error("Inbox can't be renamed.");
       this.db.query("UPDATE projects SET name = ?, paths = ?, description = ?, agent = ? WHERE id = ?")
@@ -194,6 +247,8 @@ export class ProjectRegistry {
 
   remove(id: string): boolean {
     if (id === INBOX_ID) return false;
+    // Its folders aren't adopted again just because a request comes from them.
+    for (const f of this.get(id)?.paths ?? []) this.db.query("INSERT OR IGNORE INTO forgotten (path) VALUES (?)").run(canonical(f));
     this.db.query("DELETE FROM sessions WHERE project_id = ?").run(id);
     return this.db.query("DELETE FROM projects WHERE id = ?").run(id).changes > 0;
   }
@@ -217,10 +272,17 @@ export class ProjectRegistry {
     return best?.p;
   }
 
-  /** A project for an unregistered git repository, named after its folder. */
-  adoptRepo(root: string): Project {
+  /**
+   * A project for an unregistered git repository, named after its folder, or
+   * nothing: the home folder, the disk root and Superclick's own folder are
+   * never projects, and a repository whose project was removed stays removed.
+   */
+  adoptRepo(root: string): Project | undefined {
     const found = this.matchPath(root);
     if (found) return found;
+    const c = canonical(root);
+    if (c === canonical(homedir()) || c === canonical("/") || within(this.home, root)) return undefined;
+    if (this.db.query("SELECT 1 FROM forgotten WHERE path = ?").get(c)) return undefined;
     let name = basename(root) || "project";
     for (let i = 2; this.byName(name); i++) name = `${basename(root)}-${i}`;
     return this.save({ name, paths: [root] });

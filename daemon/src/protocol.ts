@@ -32,7 +32,10 @@ export type ClientMessage =
   /** `project` is a project id picked in the bubble, or the project of the answer being replied to. */
   | { type: "request"; id: string; text: string; prompt?: string; fullPage: boolean; context: ContextBundle; project?: string }
   /** Moves a request to another project. `name` is typed in the bubble and makes a new project if none has it. */
-  | { type: "request.reroute"; id: string; project?: string; name?: string }
+  /** `learn: false` (the "shop or Inbox?" chooser) moves it without making a rule. */
+  | { type: "request.reroute"; id: string; project?: string; name?: string; learn?: boolean }
+  /** The app's answer to capture.request (M5's what_am_i_looking_at). */
+  | { type: "capture.result"; requestId: string; markdown?: string; screenshot?: string; refused?: string }
   | { type: "projects.list" }
   /** The "while you were away" cards: activity since `since` (ms since 1970). */
   | { type: "catchup.get"; since: number }
@@ -60,6 +63,8 @@ export type ServerMessage =
   | { type: "reply.error"; id: string; message: string }
   | { type: "context"; captureId: string; part: string; text: string | null }
   | { type: "projects"; projects: ProjectInfo[] }
+  /** An agent asked what the user is looking at; the app captures the front window and answers with capture.result. */
+  | { type: "capture.request"; requestId: string; screenshot: boolean; fullPage: boolean }
   | { type: "catchup"; since: number; cards: CatchUpCard[] }
   | { type: "pong" }
   | { type: "error"; error: string; detail?: string };
@@ -184,9 +189,16 @@ export function parseClientMessage(raw: string): ClientMessage {
       if (!(isStr(v.project) && v.project) && !(isStr(v.name) && v.name.trim()))
         throw new ProtocolError("request.reroute needs a project or a name");
       return { type: "request.reroute", id: v.id, project: isStr(v.project) && v.project ? v.project : undefined,
-        name: isStr(v.name) && v.name.trim() ? v.name.trim() : undefined };
+        name: isStr(v.name) && v.name.trim() ? v.name.trim() : undefined, learn: v.learn === false ? false : undefined };
     case "projects.list":
       return { type: "projects.list" };
+    case "capture.result": {
+      if (!isStr(v.requestId)) throw new ProtocolError("capture.result needs a requestId");
+      if (!optStr(v.markdown) || !optStr(v.screenshot) || !optStr(v.refused)) throw new ProtocolError("capture.result fields must be strings");
+      if (isStr(v.screenshot) && !/^[A-Za-z0-9+/=]*$/.test(v.screenshot)) throw new ProtocolError("capture.result screenshot must be base64");
+      return { type: "capture.result", requestId: v.requestId, markdown: isStr(v.markdown) ? v.markdown : undefined,
+        screenshot: isStr(v.screenshot) && v.screenshot ? v.screenshot : undefined, refused: isStr(v.refused) ? v.refused : undefined };
+    }
     case "catchup.get":
       if (typeof v.since !== "number" || !Number.isFinite(v.since)) throw new ProtocolError("catchup.get needs since (ms)");
       return { type: "catchup.get", since: v.since };

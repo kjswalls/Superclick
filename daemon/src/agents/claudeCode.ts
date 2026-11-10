@@ -44,10 +44,13 @@ export function readStaysInside(tool: string, input: Record<string, unknown>, cw
     const v = input[k];
     if (typeof v === "string" && v && !within(isAbsolute(v) ? v : resolve(cwd, v), cwd)) return false;
   }
-  const pattern = input.pattern;
-  if (tool === "Glob" && typeof pattern === "string" && (isAbsolute(pattern) || pattern.startsWith("~") || pattern.includes(".."))) {
-    const fixed = pattern.split("*")[0]!;
-    if (!within(resolve(cwd, fixed.startsWith("~") ? "/" : fixed), cwd)) return false;
+  // Glob patterns (and Grep's glob filter) can climb out: "*/../../etc/*", "{/Users/me/.ssh,x}/*", "~/…".
+  for (const k of ["pattern", "glob"]) {
+    const v = input[k];
+    if (tool === "Grep" && k === "pattern") continue; // Grep's pattern is a regex over contents, not a path
+    if (typeof v !== "string") continue;
+    if (v.includes("..") || v.includes("{") || v.includes("~")) return false;
+    if (isAbsolute(v) && !within(v.split("*")[0]!, cwd)) return false;
   }
   return true;
 }
@@ -108,8 +111,8 @@ export interface SessionOptions {
   resumeId?: string;
   /** Called when Claude Code reports the session's id, so it can be saved. */
   onSessionId?: (id: string) => void;
-  /** Extra tools for the session (M5: the context MCP server). */
-  mcpServers?: Options["mcpServers"];
+  /** Extra tools for the session (M5: the context MCP server), made fresh for each turn. */
+  mcpServers?: () => Options["mcpServers"];
   /** Tool names that run without asking, on top of READ_ONLY_TOOLS. */
   alsoAllowed?: string[];
 }
@@ -153,21 +156,35 @@ export class ClaudeCodeSession implements AgentSession {
     return true;
   }
 
+  /** Abort controllers of the running and queued turns, for cancel(). */
+  private live = new Set<AbortController>();
+
+  cancel(): void {
+    for (const a of this.live) a.abort();
+  }
+
   /** One turn at a time per session: a second request waits for the first to finish. */
   async *send(input: SendInput): AsyncIterable<AgentEvent> {
     const before = this.tail;
     let release!: () => void;
     this.tail = new Promise<void>((r) => (release = r));
+    const mine = new AbortController();
+    if (input.signal?.aborted) mine.abort();
+    input.signal?.addEventListener("abort", () => mine.abort(), { once: true });
+    this.live.add(mine);
     try {
       if (this.busy) yield { type: "tool", tool: "Waiting", summary: "Waiting for this project's last request to finish…" };
-      await before;
-      if (input.signal?.aborted) {
+      // Stop works while waiting in the queue, too.
+      await Promise.race([before, new Promise<void>((r) => mine.signal.addEventListener("abort", () => r(), { once: true }))]);
+      if (mine.signal.aborted) {
         yield { type: "error", message: "Cancelled." };
         return;
       }
-      yield* this.turn(input);
+      yield* this.turn({ ...input, signal: mine.signal });
     } finally {
-      release();
+      this.live.delete(mine);
+      // The next turn starts only once this one has really finished, even if this one was cancelled while queued.
+      before.then(release, release);
     }
   }
 
@@ -219,7 +236,7 @@ export class ClaudeCodeSession implements AgentSession {
       settingSources: ["user"],
       ...claudeExecutable(),
       systemPrompt: { type: "preset", preset: "claude_code", append: SYSTEM_APPEND + projectInstructions(this.cwd) },
-      ...(this.opts.mcpServers ? { mcpServers: this.opts.mcpServers } : {}),
+      ...(this.opts.mcpServers ? { mcpServers: this.opts.mcpServers() } : {}),
     });
 
     /** One try. Returns false when nothing came out and it failed, so a stale resume can be retried fresh. */

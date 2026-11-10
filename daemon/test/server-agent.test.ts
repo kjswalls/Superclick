@@ -160,3 +160,38 @@ test("catch-up cards come back over the socket", async () => {
   c.ws.close();
 });
 
+test("a failed reroute fails the request's own bubble", async () => {
+  const c = connect();
+  await c.ready;
+  c.ws.send(JSON.stringify({ type: "request.reroute", id: "never-sent", name: "shop" }));
+  expect(await c.until((m) => m.type === "reply.error" && m.id === "never-sent")).toMatchObject({ message: expect.stringContaining("too old") });
+  c.ws.send(JSON.stringify({ type: "request.reroute", id: "r3", name: "a name that is far too long to be a project" }));
+  expect(await c.until((m) => m.type === "reply.error" && m.id === "r3")).toMatchObject({ message: "Keep project names short." });
+  c.ws.close();
+});
+
+test("the chooser moves a request without learning a rule", async () => {
+  const c = connect();
+  await c.ready;
+  c.ws.send(JSON.stringify({ type: "request", id: "r7", text: "quick seven", prompt: "quick seven",
+    context: bundle({ id: "cap-7", url: "https://blog.example.com/posts/7" }) }));
+  await c.until((m) => m.type === "reply.done" && m.id === "r7");
+  c.ws.send(JSON.stringify({ type: "request.reroute", id: "r7", name: "shop", learn: false }));
+  await c.until((m) => m.type === "request.accepted" && m.id === "r7" && m.route.project === "shop");
+  expect(w.registry.rules().some((r) => r.pattern.startsWith("blog.example.com"))).toBe(false);
+  await c.until((m) => m.type === "reply.done" && m.id === "r7" && m.text.includes("shop"));
+  c.ws.close();
+});
+
+test("removing a project stops its running turn", async () => {
+  const c = connect();
+  await c.ready;
+  const p = w.registry.save({ name: "doomed" });
+  c.ws.send(JSON.stringify({ type: "request", id: "r8", text: "slow doomed", prompt: "slow doomed", project: p.id,
+    context: bundle({ id: "cap-8" }) }));
+  await c.until((m) => m.type === "request.accepted" && m.id === "r8");
+  c.ws.send(JSON.stringify({ type: "projects.remove", id: p.id }));
+  expect(await c.until((m) => m.type === "reply.error" && m.id === "r8")).toMatchObject({ message: "Cancelled." });
+  c.ws.close();
+});
+
