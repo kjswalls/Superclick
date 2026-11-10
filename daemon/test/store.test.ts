@@ -48,4 +48,14 @@ describe("RequestStore", () => {
     t = 1001;
     expect(s.get("x")).toBeUndefined();
   });
+
+  test("drops the oldest entries when the text held passes the cap", () => {
+    const s = new RequestStore(50, 60_000, Date.now, 1000);
+    const big = (id: string) => req(id, { page: { text: "x".repeat(600), headings: [], method: "treeWalk", wordCount: 1 } });
+    s.add(big("one"));
+    s.add(big("two"));
+    expect(s.get("one")).toBeUndefined();
+    expect(s.get("two")).toBeDefined();
+    expect(s.size).toBe(1);
+  });
 });

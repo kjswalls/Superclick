@@ -28,6 +28,9 @@ describe("parseClientMessage", () => {
     ["empty text", JSON.stringify({ type: "request", id: "r", text: "  ", context: bundle() })],
     ["bad context", JSON.stringify({ type: "request", id: "r", text: "x", context: { id: "c" } })],
     ["non-string field", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ url: 5 }) })],
+    ["heading without text", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [{ level: 1 }], method: "treeWalk" } }) })],
+    ["heading with a huge level", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [{ level: 1e9, text: "h" }], method: "treeWalk" } }) })],
+    ["heading that isn't an object", JSON.stringify({ type: "request", id: "r", text: "x", context: bundle({ page: { text: "t", headings: [null], method: "treeWalk" } }) })],
     ["bad part", JSON.stringify({ type: "context.get", captureId: "c", part: "secrets" })],
   ])("rejects %s", (_, raw) => {
     expect(() => parseClientMessage(raw)).toThrow(ProtocolError);

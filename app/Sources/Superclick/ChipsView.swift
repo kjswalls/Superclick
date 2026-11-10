@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SuperclickCore
 import SwiftUI
 
@@ -149,7 +150,7 @@ struct ChipIcon: View {
     let chip: Chip
 
     var body: some View {
-        if let path = chip.thumbnailPath, let img = NSImage(contentsOfFile: path) {
+        if let path = chip.thumbnailPath, let img = Thumbnails.image(path) {
             Image(nsImage: img)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -238,5 +239,24 @@ struct FlowLayout: Layout {
             rows[rows.count - 1] = row
         }
         return rows
+    }
+}
+
+/// Small, decoded-once thumbnails for screenshot chips, so typing doesn't
+/// re-decode a full-resolution PNG on every keystroke.
+@MainActor
+enum Thumbnails {
+    private static let cache = NSCache<NSString, NSImage>()
+
+    static func image(_ path: String) -> NSImage? {
+        if let hit = cache.object(forKey: path as NSString) { return hit }
+        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 96,
+              ] as CFDictionary) else { return nil }
+        let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        cache.setObject(img, forKey: path as NSString)
+        return img
     }
 }

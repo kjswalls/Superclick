@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadOrCreateToken, tokenMatches } from "../src/auth.ts";
@@ -71,6 +71,14 @@ describe("token", () => {
     const b = loadOrCreateToken(dir);
     expect(a).toBe(b);
     expect(a).toHaveLength(64);
+    expect(statSync(join(dir, "daemon.token")).mode & 0o777).toBe(0o600);
+  });
+
+  test("is set back to owner-only if its permissions were loosened", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sc-"));
+    loadOrCreateToken(dir);
+    chmodSync(join(dir, "daemon.token"), 0o644);
+    loadOrCreateToken(dir);
     expect(statSync(join(dir, "daemon.token")).mode & 0o777).toBe(0o600);
   });
 

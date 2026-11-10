@@ -137,13 +137,15 @@ final class CursorGlow {
         p.orderFrontRegardless()
 
         follow?.invalidate()
-        follow = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
             Task { @MainActor in place() }
         }
+        follow = timer
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(reduce ? 1300 : 1500))
-            self.follow?.invalidate()
-            self.follow = nil
+            timer.invalidate()
+            // A newer glow may have started meanwhile; leave its timer and panel alone.
+            if self.follow === timer { self.follow = nil }
             if self.panel === p { p.orderOut(nil); self.panel = nil }
         }
     }

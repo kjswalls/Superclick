@@ -35,6 +35,14 @@ enum ChipTint {
 
 enum LoadState: Equatable { case idle, loading, done }
 
+enum ReplyPhase: Equatable { case none, waiting, streaming, done, failed }
+
+struct PendingApproval: Equatable {
+    var id: String
+    var tool: String
+    var summary: String
+}
+
 /// Drives one summon: captures context in stages and holds what the bubble shows.
 @MainActor
 final class BubbleModel: ObservableObject {
@@ -48,7 +56,30 @@ final class BubbleModel: ObservableObject {
     /// Bumped to play the one-shot rainbow edge.
     @Published private(set) var glowToken = 0
 
+    // The agent's reply (M2).
+    @Published private(set) var phase: ReplyPhase = .none
+    @Published private(set) var replyText = ""
+    @Published private(set) var finalText: String?
+    @Published private(set) var toolLines: [String] = []
+    @Published private(set) var approval: PendingApproval?
+    @Published private(set) var routeLabel: String?
+    @Published private(set) var routeReason: String?
+    @Published var approvalReply = ""
+    /// The request currently with the agent.
+    private(set) var requestID: String?
+    /// The question this reply answers, kept for "Show last answer".
+    private(set) var askedText = ""
+    /// Whether the user has seen the finished answer (clears the menu-bar badge).
+    var seen = false
+    /// Called when something changes while the bubble is closed (answer ready, approval needed).
+    var onBackgroundChange: (() -> Void)?
+
     let summonedAt: Double
+    /// Set when the bubble closes: late capture stages stop and clean up after themselves.
+    private(set) var closed = false
+    /// True once every capture stage has finished (or been skipped).
+    @Published private(set) var captureFinished = false
+    private var onCaptured: [() -> Void] = []
     private var removed: Set<ContextKind> = []
     private let settings: AppSettings
     private(set) var lastReport: CaptureReport
@@ -76,11 +107,13 @@ final class BubbleModel: ObservableObject {
         if settings.blocklist.blocksApp(bundleID) {
             bundle.block(reason: "\(bundle.app.name) is on the blocklist")
             lastReport.blocked = bundle.blockedReason
+            finishCapture()
             onReport(lastReport)
             return
         }
         guard Permissions.shared.accessibility else {
             status = "Superclick needs Accessibility permission to see what you're looking at."
+            finishCapture()
             onReport(lastReport)
             return
         }
@@ -91,28 +124,56 @@ final class BubbleModel: ObservableObject {
         if wantScreenshot { screenshotState = .loading }
 
         Task.detached(priority: .userInitiated) {
+            Screenshot.clearOld()
+
             // Stage 1: title, file, selection.
             let quick = QuickContext.read(pid: pid, bundleID: bundleID)
             await self.applyQuick(quick)
+            if await self.closed { await self.finishCapture(); return }
 
             // Stage 2: the page. Browsers get the full search; other apps a quick look
-            // for an embedded web view (Electron apps, help viewers).
+            // for an embedded web view (Electron apps, help viewers). The tree walk
+            // is only for headings once text markers worked, so it gets a short limit.
             var options = PageReader.Options()
             options.alwaysWalk = true
             options.allowEnhancedUI = isBrowser
-            if !isBrowser { options.searchLimit = 400; options.walkSeconds = 0.5 }
+            options.walkSeconds = isBrowser ? 0.6 : 0.4
+            if !isBrowser { options.searchLimit = 400 }
             let page = PageReader.read(pid: pid, bundleID: bundleID, options: options)
             let stillCapturing = await self.applyPage(page, isBrowser: isBrowser)
 
             // Stage 3: the screenshot, after the URL check so a blocked site never gets one.
-            if wantScreenshot && stillCapturing {
+            if wantScreenshot && stillCapturing, !(await self.closed) {
                 let t = now()
                 let url = try? await Screenshot.captureFrontWindow(pid: pid, id: captureID)
                 await self.applyScreenshot(url, ms: elapsedMs(since: t))
             } else {
                 await self.applyScreenshot(nil, ms: 0)
             }
+            await self.finishCapture()
             await MainActor.run { onReport(self.lastReport) }
+        }
+    }
+
+    private func finishCapture() {
+        guard !captureFinished else { return }
+        captureFinished = true
+        let waiting = onCaptured
+        onCaptured = []
+        for f in waiting { f() }
+    }
+
+    /// Runs `f` once every capture stage is done, so nothing is sent before the
+    /// blocklist has seen the page's URL.
+    func whenCaptured(_ f: @escaping () -> Void) {
+        if captureFinished { f() } else { onCaptured.append(f) }
+    }
+
+    /// The bubble closed. Unsent screenshots are deleted.
+    func markClosed(keepScreenshot: Bool) {
+        closed = true
+        if !keepScreenshot, let p = bundle.screenshotPath {
+            try? FileManager.default.removeItem(atPath: p)
         }
     }
 
@@ -131,12 +192,18 @@ final class BubbleModel: ObservableObject {
         }
     }
 
-    /// Returns false when the page turned out to be blocked.
+    /// Returns false when the page turned out to be blocked, or a screenshot
+    /// shouldn't be taken.
     private func applyPage(_ r: PageReader.Result, isBrowser: Bool) -> Bool {
         defer { pageState = .done }
         guard !bundle.isBlocked else { return false }
         if let site = settings.blocklist.blockedSite(for: r.url) {
             bundle.block(reason: "\(site) is on the blocklist")
+            lastReport.blocked = bundle.blockedReason
+            return false
+        }
+        if Blocklist.looksPrivate(windowTitle: r.windowTitle) {
+            bundle.block(reason: "this looks like a private window")
             lastReport.blocked = bundle.blockedReason
             return false
         }
@@ -149,13 +216,16 @@ final class BubbleModel: ObservableObject {
         lastReport.page = r
         lastReport.pageSinceHotkeyMs = elapsedMs(since: summonedAt)
         lastReport.redactions = bundle.redactionCount
+        // A browser page whose URL couldn't be read can't be checked against the
+        // blocklist, so it gets no screenshot.
+        if isBrowser && r.url == nil { return false }
         return true
     }
 
     private func applyScreenshot(_ url: URL?, ms: Int) {
         screenshotState = .done
         guard let url else { return }
-        if bundle.isBlocked || removed.contains(.screenshot) {
+        if bundle.isBlocked || removed.contains(.screenshot) || closed {
             try? FileManager.default.removeItem(at: url)
             return
         }
@@ -254,6 +324,62 @@ final class BubbleModel: ObservableObject {
 
     var promptText: String {
         PromptText.render(request: request, bundle: bundle, fullPage: fullPage)
+    }
+
+    var isBusy: Bool { phase == .waiting || phase == .streaming }
+
+    /// What Paste here and Copy use: the final answer, or what has streamed so far.
+    var answerText: String { finalText ?? replyText }
+
+    func beginRequest(id: String, text: String) {
+        requestID = id
+        askedText = text
+        phase = .waiting
+        replyText = ""
+        finalText = nil
+        toolLines = []
+        approval = nil
+        status = nil
+        request = ""
+    }
+
+    func apply(_ event: ReplyEvent) {
+        switch event {
+        case .accepted(let project, let agent, let reason, let note):
+            if let project {
+                let suffix = agent.map { " · " + $0 } ?? ""
+                routeLabel = "→ " + project + suffix
+            } else {
+                status = note
+            }
+            routeReason = reason
+        case .delta(let text):
+            phase = .streaming
+            replyText += text
+        case .tool(let summary):
+            toolLines.append(summary)
+            if toolLines.count > 4 { toolLines.removeFirst(toolLines.count - 4) }
+        case .approval(let id, let tool, let summary):
+            approval = PendingApproval(id: id, tool: tool, summary: summary)
+            approvalReply = ""
+            onBackgroundChange?()
+        case .done(let text):
+            finalText = text.isEmpty ? replyText : text
+            if replyText.isEmpty { replyText = text }
+            phase = .done
+            approval = nil
+            onBackgroundChange?()
+        case .error(let message):
+            phase = .failed
+            approval = nil
+            status = message
+            onBackgroundChange?()
+        }
+    }
+
+    func clearApproval() {
+        approval = nil
+        approvalReply = ""
     }
 }
 

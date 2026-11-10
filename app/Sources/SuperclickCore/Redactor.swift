@@ -40,10 +40,10 @@ public final class Redactor: @unchecked Sendable {
         Rule("JWT", "\\beyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}"),
         Rule("bearer token", "\\bbearer\\s+([A-Za-z0-9._~+/\\-]{20,}=*)", group: 1, caseInsensitive: true),
         Rule("secret in URL",
-             "[?&](?:token|access_token|refresh_token|api_key|apikey|key|secret|password|sig|signature)=([^&#\\s]{8,})",
+             "[?&](?:token|access_token|refresh_token|api_key|apikey|key|secret|password|sig|signature)=([^&#\\s\\[][^&#\\s]{7,})",
              group: 1, caseInsensitive: true),
         Rule("password or key",
-             "\\b[A-Za-z0-9_]*?(?:api[_\\-]?key|secret[_\\-]?key|client[_\\-]?secret|secret|token|auth[_\\-]?token|password|passwd|pwd|access[_\\-]?key)\\b[\"']?\\s*[:=]\\s*[\"']?([^\\s\"',;\\[][^\\s\"',;]{7,})",
+             "\\b[A-Za-z0-9_]*?(?:api[_\\-]?key|secret[_\\-]?key|client[_\\-]?secret|secret|token|auth[_\\-]?token|password|passwd|pwd|access[_\\-]?key)\\b[\"']?\\s*[:=]\\s*[\"']?([^\\s\"',;\\[][^\\s\"',;]{5,})",
              group: 1, caseInsensitive: true),
     ])
 
@@ -51,6 +51,13 @@ public final class Redactor: @unchecked Sendable {
 
     /// Returns `text` with secrets replaced, and adds what it found to `counts`.
     public func redact(_ text: String, counts: inout [String: Int]) -> String {
+        var seen = Set<Int>()
+        return redact(text, counts: &counts, seen: &seen)
+    }
+
+    /// Like `redact(_:counts:)`, but a secret already in `seen` (from another
+    /// field of the same capture) is replaced without being counted again.
+    public func redact(_ text: String, counts: inout [String: Int], seen: inout Set<Int>) -> String {
         var out = text
         for rule in rules {
             let ns = out as NSString
@@ -61,13 +68,12 @@ public final class Redactor: @unchecked Sendable {
             for m in matches.reversed() {
                 let r = m.range(at: rule.group)
                 guard r.location != NSNotFound, r.length > 0 else { continue }
+                let secret = ns.substring(with: r)
                 mutable.replaceCharacters(in: r, with: Self.placeholder(rule.kind))
-                found += 1
+                if seen.insert(secret.hashValue).inserted { found += 1 }
             }
-            if found > 0 {
-                counts[rule.kind, default: 0] += found
-                out = mutable as String
-            }
+            if found > 0 { counts[rule.kind, default: 0] += found }
+            out = mutable as String
         }
         return out
     }

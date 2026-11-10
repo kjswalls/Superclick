@@ -56,10 +56,13 @@ if let id = bundleID {
 } else {
     print("Switch to the browser now. Reading the frontmost app in \(Int(delay)) s…")
     pump(seconds: delay)
-    guard let front = NSWorkspace.shared.frontmostApplication else {
+    // Ask Accessibility rather than NSWorkspace: a command-line tool's
+    // NSWorkspace doesn't hear about app switches without a running main loop.
+    let system = AXUIElementCreateSystemWide()
+    guard let focused = axElement(system, kAXFocusedApplicationAttribute as String) else {
         print("Couldn't find the frontmost app."); exit(1)
     }
-    pid = front.processIdentifier
+    AXUIElementGetPid(focused, &pid)
 }
 let running = NSRunningApplication(processIdentifier: pid)
 let appName = running?.localizedName ?? "pid \(pid)"

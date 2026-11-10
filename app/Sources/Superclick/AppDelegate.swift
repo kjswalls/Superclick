@@ -19,7 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Screenshot.clearOld()
         setUpStatusItem()
         registerHotKey()
-        bubble.onReport = { [weak self] report in self?.diagnostics.last = report }
+        bubble.onReport = { [weak self] report in
+            // A slow, older summon must not overwrite a newer one's report.
+            guard let self else { return }
+            if let last = self.diagnostics.last, last.at > report.at { return }
+            self.diagnostics.last = report
+        }
+        bubble.onBackgroundChange = { [weak self] in self?.updateStatusIcon() }
         daemon.connect()
 
         // Re-register when the shortcut changes in Settings.
@@ -65,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var needsAttention: Bool {
-        !Permissions.shared.accessibility || hotKeyFailed
+        !Permissions.shared.accessibility || hotKeyFailed || bubble.hasWaitingAnswer
     }
 
     private func updateStatusIcon() {
@@ -74,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ?? NSImage()
         button.image = needsAttention ? Self.badged(base) : base
         button.image?.isTemplate = !needsAttention
-        button.toolTip = needsAttention ? "Superclick needs your attention" : "Superclick"
+        button.toolTip = bubble.hasWaitingAnswer ? "An answer is waiting" : needsAttention ? "Superclick needs your attention" : "Superclick"
     }
 
     /// The template icon with a small orange dot, drawn in the menu bar's text color.
@@ -98,7 +104,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        Permissions.shared.refresh()
         let settings = SettingsStore.shared.value
+
+        // Waiting work lives here, not on the cursor (DECISIONS).
+        if let m = bubble.lastAnswered {
+            let title: String
+            switch (m.approval != nil, m.phase) {
+            case (true, _): title = "⚠︎ \(m.routeLabel ?? "Claude Code") needs your OK…"
+            case (_, .done): title = (m.seen ? "Show last answer" : "● Answer ready") + " \(m.routeLabel ?? "")…"
+            case (_, .failed): title = "Last request failed…"
+            default: title = "Working on \u{201C}\(m.askedText.prefix(40))\u{201D}…"
+            }
+            menu.addItem(item(title, #selector(showLastAnswer)))
+            menu.addItem(.separator())
+        }
 
         let summon = NSMenuItem(title: "Summon", action: #selector(summonFromMenu), keyEquivalent: "")
         summon.target = self
@@ -145,6 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
         i.target = target ?? self
         return i
+    }
+
+    @objc private func showLastAnswer() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            self.bubble.showLastAnswer()
+        }
     }
 
     @objc private func summonFromMenu() {
@@ -200,7 +227,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         w.center()
         windows[id] = w
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.windows[id] = nil }
+            Task { @MainActor in
+                self?.windows[id] = nil
+                if id == "onboarding" { Permissions.shared.stopWatching() }
+                self?.updateStatusIcon()
+            }
         }
         NSApp.activate()
         w.makeKeyAndOrderFront(nil)

@@ -1,9 +1,19 @@
 import Foundation
 import SuperclickCore
 
+/// What the daemon reports about one request.
+enum ReplyEvent {
+    case accepted(project: String?, agent: String?, reason: String?, note: String)
+    case delta(String)
+    case tool(String)
+    case approval(id: String, tool: String, summary: String)
+    case done(String)
+    case error(String)
+}
+
 /// Talks to the local daemon over its WebSocket (DECISIONS: Swift app plus a
-/// TypeScript daemon). In M1 the daemon only acknowledges and holds requests
-/// with their context; agents run there from M2. The bubble works without it.
+/// TypeScript daemon). The daemon runs the agent sessions and streams replies
+/// back. Without it, the bubble still copies the request with its context.
 @MainActor
 final class DaemonClient: ObservableObject {
     enum State: Equatable {
@@ -20,7 +30,7 @@ final class DaemonClient: ObservableObject {
         var help: String {
             switch self {
             case .notRunning:
-                return "The Superclick daemon isn't running. Start it with `bun run start` in daemon/. The bubble still works without it."
+                return "The Superclick daemon isn't running, so Enter copies the request with its context instead of asking Claude Code. Start it with `bun run start` in daemon/."
             case .connecting: return "Connecting to the Superclick daemon…"
             case .connected(let v): return "Connected to the Superclick daemon \(v)."
             }
@@ -33,6 +43,7 @@ final class DaemonClient: ObservableObject {
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .ephemeral)
     private var retry: Task<Void, Never>?
+    private var handlers: [String: (ReplyEvent) -> Void] = [:]
 
     /// The daemon writes a random token here (mode 0600) and only accepts
     /// connections that present it, so other local processes and web pages can't talk to it.
@@ -68,6 +79,7 @@ final class DaemonClient: ObservableObject {
                 case .failure:
                     self.task = nil
                     self.state = .notRunning
+                    self.failAll("Lost the connection to the Superclick daemon.")
                     self.scheduleRetry()
                 case .success(let message):
                     if case .string(let s) = message { self.handle(s) }
@@ -83,7 +95,34 @@ final class DaemonClient: ObservableObject {
               let type = obj["type"] as? String else { return }
         if type == "welcome" {
             state = .connected(version: obj["version"] as? String ?? "?")
+            return
         }
+        guard let id = obj["id"] as? String, let handler = handlers[id] else { return }
+        let str = { (k: String) in obj[k] as? String ?? "" }
+        let event: ReplyEvent?
+        switch type {
+        case "request.accepted":
+            let r = obj["route"] as? [String: Any]
+            event = .accepted(project: r?["project"] as? String, agent: r?["agent"] as? String,
+                              reason: r?["reason"] as? String, note: str("note"))
+        case "reply.delta": event = .delta(str("text"))
+        case "reply.tool": event = .tool(str("summary"))
+        case "approval.needed": event = .approval(id: str("approvalId"), tool: str("tool"), summary: str("summary"))
+        case "reply.done": event = .done(str("text"))
+        case "reply.error": event = .error(str("message"))
+        default: event = nil
+        }
+        guard let event else { return }
+        handler(event)
+        if case .done = event { handlers[id] = nil }
+        if case .error = event { handlers[id] = nil }
+    }
+
+    /// Drops every running request with an error, so no bubble waits forever.
+    private func failAll(_ message: String) {
+        let hs = handlers
+        handlers = [:]
+        for h in hs.values { h(.error(message)) }
     }
 
     private func scheduleRetry() {
@@ -95,12 +134,33 @@ final class DaemonClient: ObservableObject {
         }
     }
 
-    /// Hands the request and what's left of its context to the daemon.
-    func sendRequest(text: String, bundle: ContextBundle, fullPage: Bool) {
-        guard case .connected = state,
+    var isConnected: Bool {
+        if case .connected = state { return true }
+        return false
+    }
+
+    /// Sends the request and what's left of its context to the agent. Returns
+    /// the request id, or nil when the daemon isn't connected.
+    @discardableResult
+    func sendRequest(text: String, prompt: String, bundle: ContextBundle, fullPage: Bool,
+                     onEvent: @escaping (ReplyEvent) -> Void) -> String? {
+        guard isConnected,
               let bundleData = try? Self.encoder.encode(bundle),
-              let bundleJSON = try? JSONSerialization.jsonObject(with: bundleData) else { return }
-        send(["type": "request", "id": UUID().uuidString, "text": text, "fullPage": fullPage, "context": bundleJSON])
+              let bundleJSON = try? JSONSerialization.jsonObject(with: bundleData) else { return nil }
+        let id = UUID().uuidString
+        handlers[id] = onEvent
+        send(["type": "request", "id": id, "text": text, "prompt": prompt, "fullPage": fullPage, "context": bundleJSON])
+        return id
+    }
+
+    func answerApproval(id: String, allow: Bool, message: String?) {
+        var obj: [String: Any] = ["type": "approval.answer", "approvalId": id, "allow": allow]
+        if let message, !message.isEmpty { obj["message"] = message }
+        send(obj)
+    }
+
+    func cancel(requestID: String) {
+        send(["type": "request.cancel", "id": requestID])
     }
 
     private func send(_ obj: [String: Any]) {

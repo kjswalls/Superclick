@@ -1,15 +1,18 @@
 import type { Server, ServerWebSocket } from "bun";
 import { tokenMatches } from "./auth.ts";
-import { PROTOCOL_VERSION, ProtocolError, parseClientMessage, type ServerMessage } from "./protocol.ts";
+import { PROTOCOL_VERSION, ProtocolError, parseClientMessage, type ContextBundle, type ServerMessage } from "./protocol.ts";
+import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
 
 export const DEFAULT_PORT = 47811;
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 export interface DaemonOptions {
   token: string;
   port?: number;
   store?: RequestStore;
+  /** Agent sessions (M2). Without it the daemon only holds requests, as in M1. */
+  sessions?: SessionManager;
   log?: (line: string) => void;
 }
 
@@ -26,7 +29,86 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
   const store = opts.store ?? new RequestStore();
   const log = opts.log ?? ((l: string) => console.log(`[superclick] ${l}`));
 
-  const send = (ws: ServerWebSocket<Conn>, m: ServerMessage) => ws.send(JSON.stringify(m));
+  const send = (ws: ServerWebSocket<Conn>, m: ServerMessage) => {
+    // A run keeps going if the app disconnects; its events are dropped until M4's catch-up.
+    if (ws.readyState === 1) ws.send(JSON.stringify(m));
+  };
+  const running = new Map<string, AbortController>();
+
+  async function run(ws: ServerWebSocket<Conn>, id: string, prompt: string, context: ContextBundle) {
+    const sessions = opts.sessions!;
+    const { route, session } = sessions.route(context);
+    log(`route ${id}: → ${route.project} (${route.reason})`);
+    send(ws, {
+      type: "request.accepted",
+      id,
+      captureId: context.id,
+      note: `Sent to ${route.project} · ${session.agent}`,
+      route: { project: route.project, cwd: route.cwd, agent: session.agent, reason: route.reason },
+    });
+    const abort = new AbortController();
+    running.set(id, abort);
+    try {
+      for await (const e of session.send({ prompt, context, signal: abort.signal })) {
+        switch (e.type) {
+          case "text": send(ws, { type: "reply.delta", id, text: e.text }); break;
+          case "tool": send(ws, { type: "reply.tool", id, tool: e.tool, summary: e.summary }); break;
+          case "approval": send(ws, { type: "approval.needed", id, approvalId: e.approvalId, tool: e.tool, summary: e.summary }); break;
+          case "done": send(ws, { type: "reply.done", id, text: e.text }); break;
+          case "error": send(ws, { type: "reply.error", id, message: e.message }); break;
+        }
+      }
+    } catch (e) {
+      send(ws, { type: "reply.error", id, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      running.delete(id);
+    }
+  }
+
+  function handleMessage(ws: ServerWebSocket<Conn>, raw: string | Buffer) {
+    let msg;
+    try {
+      msg = parseClientMessage(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+    } catch (e) {
+      const detail = e instanceof ProtocolError ? e.message : String(e);
+      send(ws, { type: "error", error: "bad_message", detail });
+      return;
+    }
+    switch (msg.type) {
+      case "hello":
+        ws.data.client = `${msg.client} ${msg.version}`;
+        log(`connected: ${ws.data.client}`);
+        return;
+      case "ping":
+        send(ws, { type: "pong" });
+        return;
+      case "request": {
+        store.add({ id: msg.id, text: msg.text, fullPage: msg.fullPage, context: msg.context });
+        const c = msg.context;
+        const words = c.page?.wordCount ?? 0;
+        // Log the shape of the request, never its content.
+        log(`request ${msg.id} from ${c.app.name}: ${msg.text.length} chars, page ${words} words, ` +
+            `${Object.values(c.redactions).reduce((a, b) => a + b, 0)} redacted`);
+        if (opts.sessions) {
+          void run(ws, msg.id, msg.prompt ?? msg.text, c);
+        } else {
+          send(ws, { type: "request.accepted", id: msg.id, captureId: c.id, note: "Held locally; no agent is configured." });
+        }
+        return;
+      }
+      case "approval.answer": {
+        const ok = opts.sessions?.all().some((s) => s.approve(msg.approvalId, { allow: msg.allow, message: msg.message }));
+        if (!ok) send(ws, { type: "error", error: "unknown_approval", detail: msg.approvalId });
+        return;
+      }
+      case "request.cancel":
+        running.get(msg.id)?.abort();
+        return;
+      case "context.get":
+        send(ws, { type: "context", captureId: msg.captureId, part: msg.part, text: store.part(msg.captureId, msg.part) });
+        return;
+    }
+  }
 
   const server = Bun.serve<Conn, never>({
     hostname: "127.0.0.1",
@@ -46,40 +128,12 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
         send(ws, { type: "welcome", version: VERSION, protocol: PROTOCOL_VERSION });
       },
       message(ws, raw) {
-        let msg;
+        // One bad message must never take the daemon down.
         try {
-          msg = parseClientMessage(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+          handleMessage(ws, raw);
         } catch (e) {
-          const detail = e instanceof ProtocolError ? e.message : String(e);
-          send(ws, { type: "error", error: "bad_message", detail });
-          return;
-        }
-        switch (msg.type) {
-          case "hello":
-            ws.data.client = `${msg.client} ${msg.version}`;
-            log(`connected: ${ws.data.client}`);
-            return;
-          case "ping":
-            send(ws, { type: "pong" });
-            return;
-          case "request": {
-            store.add({ id: msg.id, text: msg.text, fullPage: msg.fullPage, context: msg.context });
-            const c = msg.context;
-            const words = c.page?.wordCount ?? 0;
-            // Log the shape of the request, never its content.
-            log(`request ${msg.id} from ${c.app.name}: ${msg.text.length} chars, page ${words} words, ` +
-                `${Object.values(c.redactions).reduce((a, b) => a + b, 0)} redacted`);
-            send(ws, {
-              type: "request.accepted",
-              id: msg.id,
-              captureId: c.id,
-              note: "Held locally. Agent sessions arrive in M2.",
-            });
-            return;
-          }
-          case "context.get":
-            send(ws, { type: "context", captureId: msg.captureId, part: msg.part, text: store.part(msg.captureId, msg.part) });
-            return;
+          log(`error handling a message: ${e instanceof Error ? e.message : String(e)}`);
+          send(ws, { type: "error", error: "internal", detail: "The daemon couldn't handle that message." });
         }
       },
       close(ws) {

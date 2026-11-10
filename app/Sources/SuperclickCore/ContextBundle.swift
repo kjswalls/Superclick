@@ -70,6 +70,14 @@ public struct ContextBundle: Codable, Sendable, Equatable {
     public var blockedReason: String?
     /// Milliseconds per capture step ("quick", "page", "screenshot", "visible").
     public var timings: [String: Int]
+    /// Hashes of secrets already counted, so one secret in the selection and the
+    /// page counts once. In memory only; never encoded.
+    private var seenSecrets: Set<Int> = []
+
+    enum CodingKeys: String, CodingKey {
+        case id, capturedAt, app, windowTitle, filePath, cwd, url, selection, page, screenshotPath
+        case redactions, blockedReason, timings
+    }
 
     public init(app: AppInfo, id: UUID = UUID(), capturedAt: Date = Date()) {
         self.id = id
@@ -94,6 +102,7 @@ public struct ContextBundle: Codable, Sendable, Equatable {
         page = nil
         screenshotPath = nil
         redactions = [:]
+        seenSecrets = []
     }
 
     public mutating func remove(_ kind: ContextKind) {
@@ -112,7 +121,7 @@ public struct ContextBundle: Codable, Sendable, Equatable {
     public mutating func set(_ kind: ContextKind, _ value: String?, redactor: Redactor = .standard) {
         var clean: String? = nil
         if let v = value, !v.isEmpty {
-            clean = redactor.redact(v, counts: &redactions)
+            clean = redactor.redact(v, counts: &redactions, seen: &seenSecrets)
         }
         switch kind {
         case .app: windowTitle = clean
@@ -126,10 +135,10 @@ public struct ContextBundle: Codable, Sendable, Equatable {
 
     public mutating func setPage(_ page: PageText?, redactor: Redactor = .standard) {
         guard var p = page else { self.page = nil; return }
-        p.text = redactor.redact(p.text, counts: &redactions)
+        p.text = redactor.redact(p.text, counts: &redactions, seen: &seenSecrets)
         var heads: [Heading] = []
         for h in p.headings {
-            heads.append(Heading(level: h.level, text: redactor.redact(h.text, counts: &redactions)))
+            heads.append(Heading(level: h.level, text: redactor.redact(h.text, counts: &redactions, seen: &seenSecrets)))
         }
         p.headings = heads
         p.wordCount = Words.count(p.text)

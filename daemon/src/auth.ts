@@ -16,7 +16,11 @@ export function loadOrCreateToken(dir = superclickHome()): string {
   const path = join(dir, "daemon.token");
   if (existsSync(path)) {
     const t = readFileSync(path, "utf8").trim();
-    if (t.length >= 32) return t;
+    if (t.length >= 32) {
+      // Tighten it again in case something loosened it.
+      chmodSync(path, 0o600);
+      return t;
+    }
   }
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const token = randomBytes(32).toString("hex");

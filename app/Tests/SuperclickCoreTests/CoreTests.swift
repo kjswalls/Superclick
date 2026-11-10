@@ -54,6 +54,17 @@ final class RedactorTests: XCTestCase {
         XCTAssertEqual(counts, ["GitHub token": 1])
     }
 
+    func testURLSecretIsNotRedactedTwice() {
+        let (out, counts) = redact("https://x.example/cb?token=ghp_" + String(repeating: "k", count: 36))
+        XCTAssertEqual(out, "https://x.example/cb?token=[redacted GitHub token]")
+        XCTAssertEqual(counts, ["GitHub token": 1])
+    }
+
+    func testShortPasswords() {
+        let (out, _) = redact("password: hunter2")
+        XCTAssertEqual(out, "password: [redacted password or key]")
+    }
+
     func testOrdinaryTextIsUntouched() {
         let text = "The token bucket algorithm refills tokens. Password managers help. See https://example.com/?page=2"
         let (out, counts) = redact(text)
@@ -70,6 +81,24 @@ final class BundleTests: XCTestCase {
         XCTAssertFalse(b.selection!.contains("ghp_"))
         b.set(.url, "")
         XCTAssertNil(b.url)
+    }
+
+    func testSameSecretInTwoFieldsCountsOnce() {
+        var b = ContextBundle(app: AppInfo(name: "Safari", bundleID: "com.apple.Safari", pid: 1))
+        let key = "AKIA" + String(repeating: "Q", count: 16)
+        b.set(.selection, key)
+        b.setPage(PageText(text: "config \(key) here", headings: [], method: .textMarkers))
+        XCTAssertEqual(b.redactionCount, 1)
+        XCTAssertFalse(b.page!.text.contains(key))
+    }
+
+    func testEncodingLeavesOutSeenSecrets() throws {
+        var b = ContextBundle(app: AppInfo(name: "Safari", bundleID: nil, pid: 1))
+        b.set(.selection, "AKIA" + String(repeating: "Q", count: 16))
+        let json = String(data: try JSONEncoder().encode(b), encoding: .utf8)!
+        XCTAssertFalse(json.contains("seenSecrets"))
+        let back = try JSONDecoder().decode(ContextBundle.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(back.redactionCount, 1)
     }
 
     func testBlockDropsEverythingButTheAppName() {

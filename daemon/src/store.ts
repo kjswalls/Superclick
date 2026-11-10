@@ -21,18 +21,36 @@ export class RequestStore {
     readonly maxEntries = 50,
     readonly ttlMs = 60 * 60 * 1000,
     private readonly clock: () => number = Date.now,
+    /** Rough cap on the text held, so a few huge pages can't grow memory without bound. */
+    readonly maxChars = 8_000_000,
   ) {}
+
+  private chars = 0;
+
+  private static sizeOf(r: StoredRequest): number {
+    const c = r.context;
+    return r.text.length + (c.page?.text.length ?? 0) + (c.selection?.length ?? 0) +
+      (c.page?.headings.reduce((n, h) => n + h.text.length, 0) ?? 0);
+  }
+
+  private drop(id: string) {
+    const r = this.byCapture.get(id);
+    if (!r) return;
+    this.chars -= RequestStore.sizeOf(r);
+    this.byCapture.delete(id);
+  }
 
   add(r: Omit<StoredRequest, "receivedAt">): StoredRequest {
     this.prune();
     const stored = { ...r, receivedAt: this.clock() };
     // Re-adding moves it to the newest position.
-    this.byCapture.delete(r.context.id);
+    this.drop(r.context.id);
     this.byCapture.set(r.context.id, stored);
-    while (this.byCapture.size > this.maxEntries) {
+    this.chars += RequestStore.sizeOf(stored);
+    while (this.byCapture.size > this.maxEntries || (this.chars > this.maxChars && this.byCapture.size > 1)) {
       const oldest = this.byCapture.keys().next().value;
       if (oldest === undefined) break;
-      this.byCapture.delete(oldest);
+      this.drop(oldest);
     }
     return stored;
   }
@@ -65,7 +83,7 @@ export class RequestStore {
   private prune() {
     const cutoff = this.clock() - this.ttlMs;
     for (const [id, r] of this.byCapture) {
-      if (r.receivedAt < cutoff) this.byCapture.delete(id);
+      if (r.receivedAt < cutoff) this.drop(id);
     }
   }
 }

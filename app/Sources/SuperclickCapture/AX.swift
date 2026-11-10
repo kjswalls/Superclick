@@ -67,6 +67,13 @@ public func findFirst(role: String, under root: AXUIElement, limit: Int = 4000) 
 public func now() -> Double { CFAbsoluteTimeGetCurrent() }
 public func elapsedMs(since t: Double) -> Int { Int(((now() - t) * 1000).rounded()) }
 
+/// Waits `seconds`, letting the current run loop handle events meanwhile.
+/// `RunLoop.run(until:)` alone returns at once on a thread with no input
+/// sources (a background task, a command-line tool), so we also sleep.
 public func pump(seconds: Double) {
-    RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    let end = Date().addingTimeInterval(seconds)
+    while Date() < end {
+        _ = RunLoop.current.run(mode: .default, before: min(end, Date().addingTimeInterval(0.05)))
+        Thread.sleep(forTimeInterval: min(0.01, max(0, end.timeIntervalSinceNow)))
+    }
 }
