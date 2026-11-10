@@ -56,12 +56,44 @@ export function gitRoot(start: string): string | undefined {
   return undefined;
 }
 
+/** realpath results for a few seconds: routing and every permission check compare paths, and disks can be slow. */
+const realCache = new Map<string, { v: string; at: number }>();
+/** Whether a volume (keyed by its first two path parts) ignores case. */
+const foldCache = new Map<string, boolean>();
+
+function swapCase(s: string): string {
+  return s.replace(/[a-z]/gi, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+}
+
+/** macOS volumes are case-insensitive by default, but not all of them: check the one this path is on. */
+function foldsCase(real: string): boolean {
+  if (process.platform !== "darwin") return false;
+  const key = real.split(sep).slice(0, 3).join(sep) || sep;
+  let f = foldCache.get(key);
+  if (f === undefined) {
+    const probe = key.length > 1 && /[a-z]/i.test(key) ? key : real;
+    f = /[a-z]/i.test(probe) ? existsSync(swapCase(probe)) : true;
+    foldCache.set(key, f);
+  }
+  return f;
+}
+
 /**
  * A path in a form that compares reliably: symlinks followed (for the part that
- * exists), and case folded on macOS, whose volumes are case-insensitive by default.
+ * exists), and case folded where the volume ignores case.
  */
 export function canonical(path: string): string {
-  let p = resolve(path);
+  const key = resolve(path);
+  const hit = realCache.get(key);
+  if (hit && Date.now() - hit.at < 5_000) return hit.v;
+  const v = canonicalUncached(key);
+  if (realCache.size > 1000) realCache.clear();
+  realCache.set(key, { v, at: Date.now() });
+  return v;
+}
+
+function canonicalUncached(path: string): string {
+  let p = path;
   let rest = "";
   // realpath only works on what exists; resolve the longest existing prefix.
   for (let i = 0; i < 64; i++) {
@@ -78,7 +110,7 @@ export function canonical(path: string): string {
       p = up;
     }
   }
-  return process.platform === "darwin" ? p.toLowerCase() : p;
+  return foldsCase(p) ? p.toLowerCase() : p;
 }
 
 /** True when `path` is `folder` or inside it, after following symlinks. */
@@ -101,7 +133,7 @@ export function normalizeURL(url: string): string | undefined {
   }
 }
 
-/** `*` matches any run of characters. Linear time (no regex), so no pattern can stall the daemon. */
+/** `*` matches any run of characters. No regex, and at worst pattern × text steps on a capped URL, so no pattern can stall the daemon. */
 export function glob(pattern: string, text: string): boolean {
   let p = 0, t = 0, star = -1, mark = 0;
   while (t < text.length) {
@@ -161,8 +193,22 @@ export function ruleForURL(url: string): string | undefined {
   if (NEVER_LEARN.some((r) => r.test(host))) return undefined;
   if (CODE_HOSTS.has(host)) return rest.length >= 2 ? `${host}/${rest[0]}/${rest[1]}/*` : undefined;
   if (SHARED_HOSTS.some((r) => r.test(host))) return rest.length >= 3 ? `${host}/${rest.slice(0, 3).join("/")}/*` : undefined;
-  return rest.length >= 1 ? `${host}/${rest[0]}/*` : undefined;
+  if (!rest.length) return undefined;
+  // "/wiki/…", "/item?id=…", "/questions/…": the first segment is how the site works, not what it's about.
+  if (GENERIC_SEGMENTS.has(rest[0]!.toLowerCase()) || /^\d+$/.test(rest[0]!)) {
+    return rest.length >= 2 && !/^\d+$/.test(rest[1]!) ? `${host}/${rest[0]}/${rest[1]}/*` : undefined;
+  }
+  return `${host}/${rest[0]}/*`;
 }
+
+/** First path segments that every page of a site shares, so a rule there would take the whole site. */
+const GENERIC_SEGMENTS = new Set([
+  "wiki", "w", "item", "items", "questions", "q", "a", "answers", "s", "search", "dp", "gp", "p", "post", "posts",
+  "article", "articles", "news", "blog", "story", "stories", "watch", "video", "videos", "r", "t", "topic", "topics",
+  "thread", "threads", "status", "en", "de", "fr", "es", "ja", "docs", "doc", "page", "pages", "view", "read",
+  "product", "products", "listing", "browse", "hc", "help", "support", "app", "home", "dashboard", "u", "user", "users",
+  "profile", "people", "in", "c", "category", "tag", "tags", "index.php", "index.html",
+]);
 
 interface ProjectRow {
   id: string;
@@ -227,6 +273,8 @@ export class ProjectRegistry {
     if (!name) throw new Error("A project needs a name.");
     if (/\s/.test(name) && name.split(/\s+/).length > 4) throw new Error("Keep project names short.");
     const existing = p.id ? this.get(p.id) : undefined;
+    // An edit to a project that was just removed mustn't bring it back as a new one.
+    if (p.id && !existing) throw new Error("That project was removed.");
     const clash = this.byName(name);
     if (clash && clash.id !== existing?.id) throw new Error(`There's already a project called ${clash.name}.`);
     const paths = (p.paths ?? existing?.paths ?? []).map((x) => resolve(x)).filter((x, i, a) => a.indexOf(x) === i);

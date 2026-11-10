@@ -31,17 +31,21 @@ test("project descriptions and summaries are escaped as data", async () => {
   expect(seen[0].prompt).not.toContain("<b>");
 });
 
-test("a failed call returns nothing, and calls pause for a minute after one", async () => {
+test("a failed call returns nothing, and calls pause for a minute after two in a row", async () => {
   let calls = 0;
   const failing: QueryFn = async function* () { calls++; throw new Error("offline"); };
   let t = 0;
   const q = new QuickModel("/tmp", failing, "haiku", 6000, () => t);
   expect(await q.classify({ text: "x", context: "", projects: [] })).toBeUndefined();
   expect(await q.classify({ text: "x", context: "", projects: [] })).toBeUndefined();
-  expect(calls).toBe(1);
+  expect(await q.classify({ text: "x", context: "", projects: [] })).toBeUndefined();
+  expect(calls).toBe(2);
+  // Summaries keep their own count.
+  await q.summarize("", "a", "b");
+  expect(calls).toBe(3);
   t = 61_000;
   await q.classify({ text: "x", context: "", projects: [] });
-  expect(calls).toBe(2);
+  expect(calls).toBe(4);
   expect(await new QuickModel("/tmp", replying("not json")).classify({ text: "x", context: "", projects: [] })).toBeUndefined();
 });
 

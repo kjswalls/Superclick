@@ -34,6 +34,26 @@ test("recent_context lists captures and returns their parts", () => {
   expect(context.recent({ capture_id: "nope", part: "full" }).isError).toBe(true);
 });
 
+test("recent_context only sees its own project's captures, and defaults to the one sent with the turn", () => {
+  const s = new RequestStore();
+  const c = new ContextService(s);
+  s.add({ id: "x1", text: "about A", fullPage: false, projectId: "shop", context: parseContext(bundle({ id: "cap-shop" })) });
+  s.add({ id: "x2", text: "an email", fullPage: false, projectId: "inbox", context: parseContext(bundle({ id: "cap-mail" })) });
+  const scope = { projectId: "shop", captureId: "cap-shop" };
+  const list = c.recent({}, scope);
+  const listText = list.content[0]!.type === "text" ? list.content[0]!.text : "";
+  expect(listText).toContain("cap-shop");
+  expect(listText).toContain("sent with this request");
+  expect(listText).not.toContain("cap-mail");
+  expect(c.recent({ part: "full" }, scope).content[0]).toMatchObject({ text: expect.stringContaining("capture cap-shop") });
+  expect(c.recent({ capture_id: "cap-mail", part: "full" }, scope).isError).toBe(true);
+});
+
+test("a fresh capture always asks, even past the user's own allow rules", () => {
+  const srv = context.server() as any;
+  expect(srv[SERVER_NAME].tools).toEqual([{ name: "what_am_i_looking_at", permission_policy: "always_ask" }]);
+});
+
 test("what_am_i_looking_at asks the connected app and returns text and the screenshot", async () => {
   const a = app();
   await a.ready;

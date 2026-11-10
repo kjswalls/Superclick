@@ -41,6 +41,7 @@ export class SessionManager {
         cwd: this.registry.folder(project),
         resumeId: row?.sdk_session_id ?? undefined,
         onSessionId: (id) => this.saveSessionId(project.id, id),
+        projectId: project.id,
       });
       this.sessions.set(project.id, s);
     }

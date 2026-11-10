@@ -75,8 +75,10 @@ describe("ClaudeCodeSession", () => {
       yield result("ok") as any;
     };
     const s = new ClaudeCodeSession("/tmp/x", fake, 20);
-    await collect(s.send({ prompt: "write" }));
+    const events = await collect(s.send({ prompt: "write" }));
     expect(decision.behavior).toBe("deny");
+    // The app hears about it, so nothing keeps offering Allow.
+    expect(events.find((e) => e.type === "approval.closed")).toMatchObject({ reason: "No answer in time." });
   });
 
   test("reports errors, including sign-in problems", async () => {
@@ -142,6 +144,9 @@ describe("auto-allowed tools", () => {
     expect(readStaysInside("Grep", { pattern: "key", path: "/etc" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "/Users/me/.ssh/*" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "~/.ssh/*" }, "/p")).toBe(false);
+    expect(readStaysInside("Read", { file_path: "~/.ssh/id_rsa" }, "/p")).toBe(false);
+    expect(readStaysInside("Grep", { pattern: "x", path: "~" }, "/p")).toBe(false);
+    expect(readStaysInside("Glob", { pattern: "*", path: "~/.aws" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "**/*.ts" }, "/p")).toBe(true);
     expect(readStaysInside("Glob", { pattern: "*/../../../../etc/*" }, "/p")).toBe(false);
     expect(readStaysInside("Glob", { pattern: "{/Users/me/.ssh,x}/*" }, "/p")).toBe(false);

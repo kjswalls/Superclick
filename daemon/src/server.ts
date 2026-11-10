@@ -19,7 +19,7 @@ import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
 
 export const DEFAULT_PORT = 47811;
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 export interface DaemonOptions {
   token: string;
@@ -88,18 +88,29 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
   const captures = new Map<string, { resolve: (r: FreshCapture) => void; from: ServerWebSocket<Conn> }>();
 
   if (opts.context) {
-    opts.context.capture = ({ screenshot, fullPage }) => new Promise<FreshCapture>((resolve) => {
+    opts.context.capture = ({ screenshot, fullPage, projectId, signal }) => new Promise<FreshCapture>((resolve) => {
       // The Mac app that said hello most recently does the capture.
       const app = [...clients].reverse().find((ws) => ws.data.client?.startsWith("superclick-mac"));
       if (!app) return resolve({ markdown: "", refused: "The Superclick app isn't running." });
+      if (signal?.aborted) return resolve({ markdown: "", refused: "Cancelled." });
       const requestId = crypto.randomUUID();
-      const timer = setTimeout(() => {
+      const settle = (r: FreshCapture) => {
+        clearTimeout(timer);
         captures.delete(requestId);
-        resolve({ markdown: "", refused: "The Superclick app didn't answer in time." });
-      }, opts.captureTimeoutMs ?? 15_000);
-      captures.set(requestId, { from: app, resolve: (r) => { clearTimeout(timer); captures.delete(requestId); resolve(r); } });
+        signal?.removeEventListener("abort", onAbort);
+        resolve(r);
+      };
+      const timer = setTimeout(() => settle({ markdown: "", refused: "The Superclick app didn't answer in time." }), opts.captureTimeoutMs ?? 15_000);
+      // Stop (or the turn ending) calls the capture off, in the app too.
+      const onAbort = () => {
+        send(app, { type: "capture.cancel", requestId });
+        settle({ markdown: "", refused: "Cancelled." });
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      captures.set(requestId, { from: app, resolve: settle });
+      const project = projectId ? opts.coordinator?.registry.get(projectId)?.name : undefined;
       log(`capture requested by an agent (screenshot: ${screenshot})`);
-      send(app, { type: "capture.request", requestId, screenshot, fullPage });
+      send(app, { type: "capture.request", requestId, screenshot, fullPage, ...(project ? { project } : {}) });
     });
   }
   let generation = 0;
@@ -153,6 +164,9 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
       }
     };
     runs.set(id, { id, gen, abort, projectId: project.id, snap });
+    // The context tools let a project's agent read only its own project's captures.
+    const stored = store.get(context.id);
+    if (stored) stored.projectId = project.id;
     const live = () => runs.get(id)?.gen === gen;
     const emit = (m: ServerMessage) => {
       if (live()) broadcast(m);
@@ -201,6 +215,11 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
             snap.approvals.push({ approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
             journal("approval", { tool: e.tool, summary: e.summary });
             emit({ type: "approval.needed", id, approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
+            break;
+          case "approval.closed":
+            snap.approvals = snap.approvals.filter((a) => a.approvalId !== e.approvalId);
+            journal("tool", { summary: `No answer: ${e.reason}` });
+            emit({ type: "approval.expired", id, approvalId: e.approvalId });
             break;
           case "done":
             emit({ type: "reply.done", id, text: e.text });
@@ -252,7 +271,8 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
   async function reroute(ws: ServerWebSocket<Conn>, msg: Extract<ClientMessage, { type: "request.reroute" }>) {
     const coordinator = opts.coordinator!;
     // Every failure lands on the request's own bubble, so it never sits on "Moving…".
-    const fail = (message: string) => send(ws, { type: "reply.error", id: msg.id, message });
+    // The request keeps running where it was, so this isn't the request's error.
+    const fail = (message: string) => send(ws, { type: "reroute.failed", id: msg.id, message });
     const stored = store.byRequest(msg.id);
     if (!stored) return fail("That request is too old to move. Ask again.");
     const reg = coordinator.registry;
@@ -335,6 +355,8 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
         const ok = opts.sessions?.all().some((s) => s.approve(msg.approvalId, { allow: msg.allow, message: msg.message }));
         if (ok) {
           for (const r of runs.values()) r.snap.approvals = r.snap.approvals.filter((a) => a.approvalId !== msg.approvalId);
+          // Every app window drops it, and its notification goes away.
+          broadcast({ type: "approval.resolved", id: msg.id, approvalId: msg.approvalId, allow: msg.allow });
         } else {
           send(ws, { type: "approval.expired", id: msg.id, approvalId: msg.approvalId });
         }

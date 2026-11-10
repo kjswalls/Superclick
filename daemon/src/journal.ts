@@ -68,10 +68,13 @@ export class Journal {
    */
   catchUp(since: number, names: (projectId: string) => { name: string; summary: string } | undefined,
           live: Map<string, "running" | "waiting">): CatchUpCard[] {
+    // Anything still running or waiting shows too, however long ago it started.
+    const liveIds = [...live.keys()].slice(0, 500);
     const rows = this.db.query(
       "SELECT project_id, request_id, type, payload, at FROM events WHERE request_id IN " +
-      "(SELECT DISTINCT request_id FROM events WHERE at >= ?) ORDER BY id",
-    ).all(since) as { project_id: string; request_id: string; type: JournalType; payload: string; at: number }[];
+      "(SELECT DISTINCT request_id FROM events WHERE at >= ?)" +
+      (liveIds.length ? ` OR request_id IN (${liveIds.map(() => "?").join(", ")})` : "") + " ORDER BY id",
+    ).all(since, ...liveIds) as { project_id: string; request_id: string; type: JournalType; payload: string; at: number }[];
 
     const requests = new Map<string, CatchUpRequest & { projectId: string }>();
     for (const r of rows) {
@@ -86,10 +89,11 @@ export class Journal {
         q = { id: r.request_id, projectId: r.project_id, text: "", status: "running", startedAt: r.at, ran: [], changed: [] };
         requests.set(r.request_id, q);
       }
-      // A reroute starts the request over in another project.
+      // A reroute starts the request over in another project. Files the first
+      // project's run already changed stay changed, so they stay listed.
       if (r.type === "request") {
         Object.assign(q, { projectId: r.project_id, text: String(p.text ?? ""), status: "running", startedAt: r.at,
-          endedAt: undefined, ran: [], changed: [], answer: undefined });
+          endedAt: undefined, ran: [], answer: undefined });
       } else if (r.type === "tool") {
         q.ran = [...q.ran, String(p.summary ?? "")].slice(-12);
       } else if (r.type === "changed") {

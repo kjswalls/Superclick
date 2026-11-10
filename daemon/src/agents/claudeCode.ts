@@ -42,6 +42,8 @@ export function readStaysInside(tool: string, input: Record<string, unknown>, cw
   if (!READ_ONLY_TOOLS.has(tool)) return false;
   for (const k of PATH_KEYS) {
     const v = input[k];
+    // "~/.ssh/id_rsa" isn't relative to the folder: Claude Code expands it to the home folder.
+    if (typeof v === "string" && v.startsWith("~")) return false;
     if (typeof v === "string" && v && !within(isAbsolute(v) ? v : resolve(cwd, v), cwd)) return false;
   }
   // Glob patterns (and Grep's glob filter) can climb out: "*/../../etc/*", "{/Users/me/.ssh,x}/*", "~/…".
@@ -111,8 +113,9 @@ export interface SessionOptions {
   resumeId?: string;
   /** Called when Claude Code reports the session's id, so it can be saved. */
   onSessionId?: (id: string) => void;
-  /** Extra tools for the session (M5: the context MCP server), made fresh for each turn. */
-  mcpServers?: () => Options["mcpServers"];
+  /** Extra tools for the session (M5: the context MCP server), made fresh for each turn and scoped to it. */
+  mcpServers?: (turn: { projectId?: string; captureId?: string; signal: AbortSignal }) => Options["mcpServers"];
+  projectId?: string;
   /** Tool names that run without asking, on top of READ_ONLY_TOOLS. */
   alsoAllowed?: string[];
 }
@@ -128,7 +131,8 @@ export class ClaudeCodeSession implements AgentSession {
   constructor(
     readonly cwd: string,
     private readonly queryFn: QueryFn = sdkQuery as unknown as QueryFn,
-    private readonly approvalTimeoutMs = 10 * 60 * 1000,
+    // Long: following a task from the desktop means coming back hours later to answer.
+  private readonly approvalTimeoutMs = 12 * 60 * 60 * 1000,
     private readonly opts: SessionOptions = {},
   ) {
     this.sdkSessionId = opts.resumeId;
@@ -206,12 +210,16 @@ export class ClaudeCodeSession implements AgentSession {
       const approvalId = randomUUID();
       events.push({ type: "approval", approvalId, tool, summary: describeTool(tool, toolInput), detail: approvalDetail(tool, toolInput) });
       const decision = await new Promise<Approval>((resolve) => {
-        const timer = setTimeout(() => this.approve(approvalId, { allow: false, message: "No answer in time." }), this.approvalTimeoutMs);
+        // Closing without the user's answer is reported, so the bubble, badge and notification drop it.
+        const close = (reason: string) => {
+          if (this.approve(approvalId, { allow: false, message: reason })) events.push({ type: "approval.closed", approvalId, reason });
+        };
+        const timer = setTimeout(() => close("No answer in time."), this.approvalTimeoutMs);
         this.pending.set(approvalId, (a) => {
           clearTimeout(timer);
           resolve(a);
         });
-        const cancel = () => this.approve(approvalId, { allow: false, message: "Cancelled." });
+        const cancel = () => close("Cancelled.");
         signal.addEventListener("abort", cancel, { once: true });
         abort.signal.addEventListener("abort", cancel, { once: true });
       });
@@ -236,7 +244,7 @@ export class ClaudeCodeSession implements AgentSession {
       settingSources: ["user"],
       ...claudeExecutable(),
       systemPrompt: { type: "preset", preset: "claude_code", append: SYSTEM_APPEND + projectInstructions(this.cwd) },
-      ...(this.opts.mcpServers ? { mcpServers: this.opts.mcpServers() } : {}),
+      ...(this.opts.mcpServers ? { mcpServers: this.opts.mcpServers({ projectId: this.opts.projectId, captureId: input.context?.id, signal: abort.signal }) } : {}),
     });
 
     /** One try. Returns false when nothing came out and it failed, so a stale resume can be retried fresh. */
@@ -305,7 +313,9 @@ export class ClaudeCodeSession implements AgentSession {
           await attempt(undefined, false);
         }
       } finally {
-        for (const id of [...this.pending.keys()]) this.approve(id, { allow: false, message: "The turn ended." });
+        for (const id of [...this.pending.keys()]) {
+          if (this.approve(id, { allow: false, message: "The turn ended." })) events.push({ type: "approval.closed", approvalId: id, reason: "The turn ended." });
+        }
         this.busy = false;
         events.close();
       }
@@ -341,7 +351,7 @@ function errorText(e: unknown): string {
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly name = "Claude Code";
   constructor(private readonly queryFn?: QueryFn, private readonly extra: Pick<SessionOptions, "mcpServers" | "alsoAllowed"> = {}) {}
-  startSession({ cwd, resumeId, onSessionId }: StartOptions): AgentSession {
-    return new ClaudeCodeSession(cwd, this.queryFn, undefined, { resumeId, onSessionId, ...this.extra });
+  startSession({ cwd, resumeId, onSessionId, projectId }: StartOptions): AgentSession {
+    return new ClaudeCodeSession(cwd, this.queryFn, undefined, { resumeId, onSessionId, projectId, ...this.extra });
   }
 }

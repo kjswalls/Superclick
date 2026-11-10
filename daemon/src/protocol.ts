@@ -56,7 +56,12 @@ export type ServerMessage =
   | { type: "reply.tool"; id: string; tool: string; summary: string }
   /** `detail` is the full input (whole command, file content), for the approval card. */
   | { type: "approval.needed"; id: string; approvalId: string; tool: string; summary: string; detail: string }
+  /** The approval ended without an answer that counted (timed out, cancelled, or answered too late): Claude Code was told no. */
   | { type: "approval.expired"; id?: string; approvalId: string }
+  /** Someone answered it (in a bubble, a notification or the catch-up window): every window drops it. */
+  | { type: "approval.resolved"; id?: string; approvalId: string; allow: boolean }
+  /** A move to another project didn't happen; the request keeps running where it was. */
+  | { type: "reroute.failed"; id: string; message: string }
   /** Sent after hello: every run still going or recently finished, so a reconnected app can catch up. */
   | { type: "sync"; runs: RunSnapshot[] }
   | { type: "reply.done"; id: string; text: string }
@@ -64,7 +69,9 @@ export type ServerMessage =
   | { type: "context"; captureId: string; part: string; text: string | null }
   | { type: "projects"; projects: ProjectInfo[] }
   /** An agent asked what the user is looking at; the app captures the front window and answers with capture.result. */
-  | { type: "capture.request"; requestId: string; screenshot: boolean; fullPage: boolean }
+  | { type: "capture.request"; requestId: string; screenshot: boolean; fullPage: boolean; project?: string }
+  /** The agent's turn stopped while the app was capturing: drop it. */
+  | { type: "capture.cancel"; requestId: string }
   | { type: "catchup"; since: number; cards: CatchUpCard[] }
   | { type: "pong" }
   | { type: "error"; error: string; detail?: string };

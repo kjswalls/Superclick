@@ -67,11 +67,11 @@ test("a request streams a reply, asks for approval, and finishes", async () => {
   ws.close();
 
   const types = got.map((m) => m.type);
-  expect(types).toEqual(["welcome", "request.accepted", "reply.delta", "approval.needed", "reply.delta", "reply.done"]);
+  expect(types).toEqual(["welcome", "request.accepted", "reply.delta", "approval.needed", "approval.resolved", "reply.delta", "reply.done"]);
   expect(got[1].route).toMatchObject({ project: "Inbox", agent: "Claude Code", step: "fallback", projectId: "inbox" });
   expect(got[3].summary).toBe("Bash bin/rails test");
-  expect(got[4].text).toBe(" ran it.");
-  expect(got[5].text).toBe("All green.");
+  expect(got[5].text).toBe(" ran it.");
+  expect(got[6].text).toBe("All green.");
   expect(prompts[0]).toBe("run tests\n\n---\nContext…");
 });
 
@@ -160,13 +160,13 @@ test("catch-up cards come back over the socket", async () => {
   c.ws.close();
 });
 
-test("a failed reroute fails the request's own bubble", async () => {
+test("a failed reroute reaches the request's own bubble without failing it", async () => {
   const c = connect();
   await c.ready;
   c.ws.send(JSON.stringify({ type: "request.reroute", id: "never-sent", name: "shop" }));
-  expect(await c.until((m) => m.type === "reply.error" && m.id === "never-sent")).toMatchObject({ message: expect.stringContaining("too old") });
+  expect(await c.until((m) => m.type === "reroute.failed" && m.id === "never-sent")).toMatchObject({ message: expect.stringContaining("too old") });
   c.ws.send(JSON.stringify({ type: "request.reroute", id: "r3", name: "a name that is far too long to be a project" }));
-  expect(await c.until((m) => m.type === "reply.error" && m.id === "r3")).toMatchObject({ message: "Keep project names short." });
+  expect(await c.until((m) => m.type === "reroute.failed" && m.id === "r3")).toMatchObject({ message: "Keep project names short." });
   c.ws.close();
 });
 

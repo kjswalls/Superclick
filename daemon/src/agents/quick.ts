@@ -80,13 +80,18 @@ export class QuickModel implements Classifier, Summarizer {
     private readonly clock: () => number = Date.now,
   ) {}
 
-  /** After a failed call (offline, signed out), skip calls for a minute rather than add seconds to every request. */
-  private failedAt = -Infinity;
+  /**
+   * After two failed calls in a row (offline, signed out), skip calls for a
+   * minute rather than add seconds to every request. One slow start doesn't
+   * count, and routing and summaries keep separate counts.
+   */
+  private failures = new Map<string, { count: number; at: number }>();
 
   private async ask(system: string, prompt: string): Promise<string | undefined> {
-    if (this.clock() - this.failedAt < 60_000) return undefined;
+    const f = this.failures.get(system) ?? { count: 0, at: -Infinity };
+    if (f.count >= 2 && this.clock() - f.at < 60_000) return undefined;
     const out = await this.call(system, prompt);
-    if (out === undefined) this.failedAt = this.clock();
+    this.failures.set(system, out === undefined ? { count: f.count + 1, at: this.clock() } : { count: 0, at: -Infinity });
     return out;
   }
 

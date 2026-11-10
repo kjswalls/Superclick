@@ -154,7 +154,12 @@ describe("reroutes teach rules", () => {
     expect(learn({ url: "https://x.com/a" }, w.registry.inbox)).toBeUndefined();
     expect(learn({ cwd: "/tmp", url: "https://x.com/a" })).toBeUndefined();
     expect(learn({ url: "https://docs.google.com/document/d/abc123/edit" })?.pattern).toBe("docs.google.com/document/d/abc123/*");
-    expect(learn({ url: "https://blog.example.com/posts/1" })?.pattern).toBe("blog.example.com/posts/*");
+    expect(learn({ url: "https://blog.example.com/recipes/1" })?.pattern).toBe("blog.example.com/recipes/*");
+    // Segments every page shares would take the whole site.
+    expect(learn({ url: "https://en.wikipedia.org/wiki/Rust" })?.pattern).toBe("en.wikipedia.org/wiki/Rust/*"); // one article, not all of Wikipedia
+    expect(learn({ url: "https://news.ycombinator.com/item?id=1" })).toBeUndefined();
+    expect(learn({ url: "https://stackoverflow.com/questions/123/how" })).toBeUndefined();
+    expect(learn({ url: "https://docs.example.com/docs/billing/limits" })?.pattern).toBe("docs.example.com/docs/billing/*");
   });
 
   test("a newer reroute for the same pattern replaces the old rule", () => {
@@ -237,6 +242,14 @@ describe("path safety", () => {
   });
 });
 
+test("saving a project that was just removed doesn't bring it back", () => {
+  const w = world(adapter);
+  const p = w.registry.save({ name: "gone" });
+  w.registry.remove(p.id);
+  expect(() => w.registry.save({ id: p.id, name: "gone", description: "edited" })).toThrow("removed");
+  expect(w.registry.byName("gone")).toBeUndefined();
+});
+
 describe("helpers", () => {
   test("mentions", () => {
     expect(findMention("@shop fix it")).toBe("shop");
@@ -254,6 +267,7 @@ describe("helpers", () => {
     expect(urlMatches("github.com/me/shop/*", "github.com/me/shopping")).toBe(false);
     expect(urlMatches("*.example.com/*", "docs.example.com/a")).toBe(true);
     expect(ruleForURL("https://github.com/me/shop/pull/3")).toBe("github.com/me/shop/*");
-    expect(ruleForURL("https://blog.example.com/post/1")).toBe("blog.example.com/post/*");
+    expect(ruleForURL("https://blog.example.com/post/1")).toBeUndefined();
+    expect(ruleForURL("https://blog.example.com/recipes/1")).toBe("blog.example.com/recipes/*");
   });
 });

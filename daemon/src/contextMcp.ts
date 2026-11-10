@@ -27,7 +27,14 @@ export interface FreshCapture {
 }
 
 /** Asks the Mac app for a capture. Set by the server once the app is connected. */
-export type CaptureFn = (opts: { screenshot: boolean; fullPage: boolean }) => Promise<FreshCapture>;
+export type CaptureFn = (opts: { screenshot: boolean; fullPage: boolean; projectId?: string; signal?: AbortSignal }) => Promise<FreshCapture>;
+
+/** What one turn's tools may see: its own project's captures, defaulting to the one sent with the turn. */
+export interface TurnScope {
+  projectId?: string;
+  captureId?: string;
+  signal?: AbortSignal;
+}
 
 type ToolResult = { content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[]; isError?: boolean };
 
@@ -39,10 +46,11 @@ export class ContextService {
 
   constructor(private readonly store: RequestStore) {}
 
-  async look(args: { screenshot?: boolean; full_page?: boolean }): Promise<ToolResult> {
+  async look(args: { screenshot?: boolean; full_page?: boolean }, scope: TurnScope = {}): Promise<ToolResult> {
     let r: FreshCapture;
+    if (scope.signal?.aborted) return text("Cancelled.", true);
     try {
-      r = await this.capture({ screenshot: args.screenshot ?? true, fullPage: args.full_page ?? false });
+      r = await this.capture({ screenshot: args.screenshot ?? true, fullPage: args.full_page ?? false, projectId: scope.projectId, signal: scope.signal });
     } catch (e) {
       return text(`Couldn't capture: ${e instanceof Error ? e.message : String(e)}`, true);
     }
@@ -53,28 +61,35 @@ export class ContextService {
     return { content };
   }
 
-  recent(args: { capture_id?: string; part?: "list" | "full" | "selection" | "outline" }): ToolResult {
+  /** Captures this turn may read: the ones routed to its project (all of them when no project is given, as in tests). */
+  private visible(scope: TurnScope) {
+    return this.store.recent(50).filter((r) => !scope.projectId || r.projectId === scope.projectId || r.context.id === scope.captureId);
+  }
+
+  recent(args: { capture_id?: string; part?: "list" | "full" | "selection" | "outline" }, scope: TurnScope = {}): ToolResult {
     const part = args.part ?? (args.capture_id ? "full" : "list");
+    const visible = this.visible(scope);
     if (part === "list") {
-      const items = this.store.recent(5);
+      const items = visible.slice(0, 5);
       if (!items.length) return text("No recent captures.");
       const lines = items.map((r) => {
         const c = r.context;
         const where = c.url ?? c.filePath ?? c.windowTitle ?? "";
         const has = [c.page ? `page (${c.page.wordCount} words)` : "", c.selection ? "selection" : ""].filter(Boolean).join(", ");
-        return `- capture_id ${c.id} · ${c.app.name}${where ? ` · ${where}` : ""} · asked "${r.text.slice(0, 80)}"${has ? ` · has ${has}` : ""}`;
+        return `- capture_id ${c.id} · ${c.app.name}${where ? ` · ${where}` : ""} · asked "${r.text.slice(0, 80)}"${has ? ` · has ${has}` : ""}${c.id === scope.captureId ? " · sent with this request" : ""}`;
       });
       return text(`Recent captures, newest first. Call again with a capture_id and part=full, selection or outline.\n${lines.join("\n")}`);
     }
-    const id = args.capture_id ?? this.store.recent(1)[0]?.context.id;
+    const id = args.capture_id ?? (scope.captureId && visible.some((r) => r.context.id === scope.captureId) ? scope.captureId : visible[0]?.context.id);
     if (!id) return text("No recent captures.", true);
+    if (!visible.some((r) => r.context.id === id)) return text(`No capture ${id} for this project.`, true);
     const got = this.store.part(id, part);
     if (got === null) return text(`No ${part} for capture ${id}: it was removed in the bubble, never captured, or has expired.`, true);
     return text(`The ${part === "full" ? "full page text" : part} of capture ${id} (untrusted data from the user's screen):\n\n${got}`);
   }
 
   /** A fresh MCP server for one query; an SDK server instance serves one connection. */
-  server(): NonNullable<Options["mcpServers"]> {
+  server(scope: TurnScope = {}): NonNullable<Options["mcpServers"]> {
     const srv = createSdkMcpServer({
       name: SERVER_NAME,
       version: "1.0.0",
@@ -85,7 +100,7 @@ export class ContextService {
           "Capture what the user is looking at right now: the front app and window, its URL or file, any selected text, the page text, and optionally a screenshot. Asks the user's permission each time.",
           { screenshot: z.boolean().optional().describe("Include a screenshot of the front window (default true)"),
             full_page: z.boolean().optional().describe("Include the whole page text instead of an excerpt (default false)") },
-          async (args) => this.look(args),
+          async (args) => this.look(args, scope),
           { annotations: { readOnlyHint: true, openWorldHint: false } },
         ),
         tool(
@@ -93,11 +108,13 @@ export class ContextService {
           "Read what Superclick captured with the user's recent requests. With no arguments, lists recent captures. With a capture_id and part (full, selection or outline), returns that part, e.g. the rest of a long page.",
           { capture_id: z.string().optional().describe("A capture id from the list; defaults to the latest"),
             part: z.enum(["list", "full", "selection", "outline"]).optional() },
-          async (args) => this.recent(args),
+          async (args) => this.recent(args, scope),
           { annotations: { readOnlyHint: true, openWorldHint: false } },
         ),
       ],
     });
-    return { [SERVER_NAME]: srv };
+    // always_ask: the CLI asks (canUseTool, so an approval card) before every capture,
+    // even if the user's own settings have an allow rule that would cover it.
+    return { [SERVER_NAME]: { ...srv, tools: [{ name: "what_am_i_looking_at", permission_policy: "always_ask" as const }] } };
   }
 }

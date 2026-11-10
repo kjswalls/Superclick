@@ -22,9 +22,7 @@
   <integer>10</integer>
   <key>ProcessType</key>
   <string>Interactive</string>
-  <key>StandardOutPath</key>
-  <string>/tmp/superclick-daemon.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/superclick-daemon.log</string>
+  <!-- No StandardOutPath: the daemon writes its own owner-only log to ~/Library/Logs/Superclick/daemon.log.
+       It exits 0 when another daemon already has the port, so KeepAlive doesn't loop. -->
 </dict>
 </plist>

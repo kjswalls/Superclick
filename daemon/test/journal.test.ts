@@ -33,6 +33,17 @@ test("only activity since the given time counts, and a turn the daemon lost show
   expect(cards[0]!.requests.map((r) => [r.id, r.status])).toEqual([["new", "failed"]]);
 });
 
+test("a request still waiting shows however long ago it started, and a reroute keeps what changed", () => {
+  let t = 1000;
+  const j = new Journal(openDatabase(":memory:"), () => t);
+  j.add("inbox", "w", "request", { text: "deploy" });
+  j.add("inbox", "w", "changed", { path: "/tmp/a" });
+  j.add("shop", "w", "request", { text: "deploy" });
+  t = 9000;
+  const cards = j.catchUp(5000, names, new Map([["w", "waiting"]]));
+  expect(cards[0]!.requests[0]).toMatchObject({ id: "w", status: "waiting", changed: ["/tmp/a"] });
+});
+
 test("a rerouted request shows once, in its new project", () => {
   const j = new Journal(openDatabase(":memory:"));
   j.add("inbox", "r1", "request", { text: "save this" });

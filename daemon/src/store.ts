@@ -8,6 +8,8 @@ export interface StoredRequest {
   fullPage: boolean;
   context: ContextBundle;
   receivedAt: number;
+  /** The project it was routed to, so one project's agent only sees its own captures. */
+  projectId?: string;
 }
 
 /**

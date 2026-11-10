@@ -4,6 +4,9 @@
 // (see the SDK README, "Compiled binaries").
 import binPath from "@anthropic-ai/claude-agent-sdk-darwin-x64/claude" with { type: "file" };
 import { extractFromBunfs } from "@anthropic-ai/claude-agent-sdk/extract";
+import { prepareLaunchdEnv } from "./launchd.ts";
+
+prepareLaunchdEnv();
 
 process.env.SUPERCLICK_CLAUDE_PATH ??= extractFromBunfs(binPath);
 await import("../src/index.ts");

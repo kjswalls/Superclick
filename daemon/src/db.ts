@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS forgotten (
 );
 CREATE INDEX IF NOT EXISTS events_by_request ON events (request_id);
 CREATE INDEX IF NOT EXISTS events_by_project ON events (project_id, at);
+CREATE INDEX IF NOT EXISTS events_by_at ON events (at);
 `;
 
 export function openDatabase(path = join(superclickHome(), "superclick.db")): Database {

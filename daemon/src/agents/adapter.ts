@@ -12,6 +12,8 @@ export type AgentEvent =
   | { type: "tool"; tool: string; summary: string }
   /** The agent wants to do something that needs the user's OK. */
   | { type: "approval"; approvalId: string; tool: string; summary: string; detail: string }
+  /** An approval ended without the user's answer (timed out, cancelled, or the turn ended). */
+  | { type: "approval.closed"; approvalId: string; reason: string }
   /** The agent was allowed to write this file (for the catch-up cards' "what changed"). */
   | { type: "changed"; path: string }
   /** The turn finished. `text` is the final answer, the part "Paste here" pastes. */
@@ -49,6 +51,8 @@ export interface StartOptions {
   /** The agent's own id for a session to pick up again, saved from an earlier run. */
   resumeId?: string;
   onSessionId?: (id: string) => void;
+  /** The project this session belongs to, so per-turn tools can stay inside it. */
+  projectId?: string;
 }
 
 export interface AgentAdapter {
