@@ -11,7 +11,8 @@ Your AI agents, attached to your cursor. Superclick (code name; working product 
 |---|---|
 | M0: Clickable mockup | Done |
 | M1: Summon + See | Built; first run and the page-text check on a Mac pending |
-| M2–M5 | Not started. Stack decided: Swift app + TypeScript daemon (see DECISIONS.md) |
+| M2: Ask Claude Code | Built (daemon + Claude Code adapter, streamed replies, approvals, Paste here); first run on a Mac pending |
+| M3–M5 | Not started |
 
 ## M0: clickable mockup
 
@@ -38,7 +39,7 @@ Needs macOS 15 or later and Xcode 16 or later (Xcode 26 for Liquid Glass; on old
 scripts/build-app.sh --open     # builds build/Superclick.app and launches it
 ```
 
-Superclick lives in the menu bar. On first launch it opens a permissions window (below). Then press **⌥Space** anywhere: the bubble opens at your pointer with chips for what it captured. Remove any chip you don't want to send, click the page chip to switch between "around selection" and "full page", type a request and press **Enter**. Until agents arrive in M2, Enter copies the request and its context to the clipboard, ready to paste into Claude Code. **Esc** or a click elsewhere closes it.
+Superclick lives in the menu bar. On first launch it opens a permissions window (below). Then press **⌥Space** anywhere: the bubble opens at your pointer with chips for what it captured. Remove any chip you don't want to send, click the page chip to switch between "around selection" and "full page", type a request and press **Enter**. With the daemon running (below), Enter asks Claude Code and the answer streams into the bubble; without it, Enter copies the request and its context to the clipboard. **Esc** or a click elsewhere closes it.
 
 If ⌥Space does nothing, another app (Raycast, Alfred, an input method) probably owns it: the menu-bar icon shows an orange dot, and Settings offers ⌃⌥Space, ⇧⌥Space or ⇧⌘Space.
 
@@ -70,16 +71,28 @@ swift run pagetext --app com.google.Chrome   # or target a browser directly
 swift run pagetext --dump                    # also list the window's AX attributes
 ```
 
-### Daemon (optional in M1)
+## M2: Ask Claude Code
 
-The daemon will host the coordinator and agent sessions from M2. In M1 it only holds each request with its context, which is what the agent will later fetch the rest of the page from. The bubble works without it; its footer shows "daemon on" when connected.
+The daemon runs the Claude Code sessions. Start it once in a Terminal and leave it running:
 
 ```sh
+claude                                       # once, if you haven't signed in to Claude Code on this Mac
 cd daemon && bun install && bun run start
 bun test                                     # tests
 ```
 
-It listens on `127.0.0.1:47811` only and accepts the app only with the token in `~/Library/Application Support/Superclick/daemon.token` (created with owner-only permissions). Connections from web pages, which always carry an Origin header, are refused.
+It uses your Claude Code sign-in; there's no API key to set. The bubble's footer says "daemon on" when it's connected (it retries every 5 s).
+
+**What to try**
+
+1. In Terminal, `cd` into one of your repos, select an error message, press ⌥Space and ask "what's wrong?". The routing chip should name the repo: requests go to the terminal's folder, or the open file's folder, widened to its git root.
+2. In Safari, select a paragraph and ask "rewrite this shorter". With no project in the context it goes to **Inbox** (a session in your home folder).
+3. When the answer is done, press **⌘↵** (Paste here): the bubble hides, the answer is pasted where your cursor was, the pointer glows, and your clipboard is put back.
+4. Ask for something that writes, like "add a test for this". Claude Code asks before running anything but local reads (Read, Glob, Grep). The approval card has **Allow**, **Deny**, or a box to tell it what to do instead.
+5. Press **Esc** while it's working: the request keeps going, and the menu-bar icon shows a dot when the answer (or an approval) is waiting. Menu bar → **Show last answer** brings it back.
+6. Reply in the same bubble to continue: each project keeps one session, resumed across requests.
+
+The daemon listens on `127.0.0.1:47811` only and accepts the app only with the token in `~/Library/Application Support/Superclick/daemon.token` (owner-only permissions, re-checked at start). Connections from web pages, which always carry an Origin header, are refused. It logs the shape of each request (sizes, counts), never its text.
 
 ### Layout
 
@@ -89,4 +102,6 @@ It listens on `127.0.0.1:47811` only and accepts the app only with the token in 
 | `app/Sources/SuperclickCapture` | Accessibility and ScreenCaptureKit capture, shared by the app and `pagetext`. |
 | `app/Sources/Superclick` | The menu-bar app: hotkey, bubble, glow, onboarding, settings, page-text check window. |
 | `app/Sources/pagetext` | The page-text check as a command-line tool. |
-| `daemon/` | TypeScript daemon on Bun. |
+| `daemon/src/agents` | The agent adapter interface and the Claude Code adapter (Claude Agent SDK). |
+| `daemon/src/sessions.ts` | Routing a request to a project session. |
+| `daemon/` | TypeScript daemon on Bun: WebSocket server, protocol, request store. |

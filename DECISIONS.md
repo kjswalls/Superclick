@@ -90,4 +90,18 @@ Kirby was away, so instead of running the spike first, its code became M1's capt
 - **The cursor glow reads the real pointer image** (`NSCursor.currentSystem`) and the Accessibility pointer size, and is drawn in a click-through overlay. The system cursor is untouched.
 - **Redaction rules:** private keys, Anthropic/OpenAI/GitHub/AWS/Slack/Stripe/Google keys, JWTs, bearer tokens, secrets in URL parameters, and `password=` / `api_key:` style assignments. Each is replaced with a visible `[redacted …]` and counted in the secrets chip.
 - **Default blocklist:** password managers (1Password, Bitwarden, Dashlane, LastPass, Apple Passwords, Keychain Access, KeePassXC) and a starter list of sign-in, payment and bank sites. Editable in Settings.
-- **Known gaps.** Private windows are only caught when the title says so (Firefox, some Chromium browsers); Safari private windows aren't detected yet. VS Code and other Electron editors may not expose the file path, only the title. Paste here and its glow come with M2, when there's an answer to paste.
+- **Known gaps.** Private windows are only caught when the title says so (Firefox, some Chromium browsers); Safari private windows aren't detected yet. VS Code and other Electron editors may not expose the file path, only the title. Paste here and its glow came with M2.
+
+## 2026-11-10 · Adversarial review of M1
+
+Ten findings, all fixed before M2: nothing is sent before the blocklist has seen the page's URL (the bubble waits for the capture to finish), a browser page without a readable URL gets no screenshot, unsent screenshots are deleted on close, the hotkey works while a Superclick window is in front, permission status refreshes, thumbnails are decoded once, the glow timer race and out-of-order capture reports are fixed, the daemon validates headings and survives a bad message, the request store is capped by size as well as count, the token file is set back to 0600 at start, and redaction no longer re-matches its own placeholders, counts one secret once across fields, and catches short passwords.
+
+## 2026-11-10 · M2: Claude Code through the Agent SDK
+
+- **The daemon drives Claude Code with the Claude Agent SDK** (`query()` with `resume`), signed in with the user's Claude Code login. No API key, and the user's CLAUDE.md, settings and MCP servers apply as usual.
+- **Routing is deterministic for now:** the terminal's folder, else the open file's folder, widened to the git root; else Inbox in the home folder. One session per folder, resumed across requests. The routing chip shows where it went and why. The model-based coordinator and rerouting come later (M3).
+- **Approvals:** local reads (Read, Glob, Grep, LS, TodoWrite, NotebookRead) run freely. Everything else, including WebFetch and WebSearch, waits for Allow, Deny, or typed instructions, which go back to Claude as the denial message. Web tools ask because captured page text is untrusted and could tell the agent to send data to a URL. An unanswered approval is denied after 10 minutes.
+- **The prompt is built in the app** (`PromptText`) so "copy with context" and "send" give Claude the same text; the daemon also keeps the structured bundle for the later context MCP server.
+- **Paste here** puts the answer on the clipboard, sends ⌘V to the app underneath, then restores the previous clipboard unless something else changed it in the meantime. It needs Accessibility, which Superclick already has.
+- **Closing the bubble doesn't stop the request.** The menu-bar icon gets a dot when an answer or approval is waiting, and "Show last answer" reopens it at the pointer. If the app disconnects, the running request finishes but its events are dropped; catching up after a reconnect is M4.
+

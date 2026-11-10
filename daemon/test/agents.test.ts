@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentEvent } from "../src/agents/adapter.ts";
-import { ClaudeCodeSession, describeTool, type QueryFn } from "../src/agents/claudeCode.ts";
+import { ClaudeCodeSession, READ_ONLY_TOOLS, describeTool, type QueryFn } from "../src/agents/claudeCode.ts";
 import { parseContext } from "../src/protocol.ts";
 import { SessionManager, routeFor } from "../src/sessions.ts";
 import { bundle } from "./fixtures.ts";
@@ -126,5 +126,11 @@ describe("routing", () => {
     m.route(parseContext(bundle()));
     expect(a).toBe(b);
     expect(started).toBe(2);
+  });
+});
+
+describe("auto-allowed tools", () => {
+  test("never include tools that reach the network", () => {
+    for (const t of ["WebFetch", "WebSearch", "Bash", "Write", "Edit"]) expect(READ_ONLY_TOOLS.has(t)).toBe(false);
   });
 });

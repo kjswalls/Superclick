@@ -4,8 +4,13 @@ import type { AgentAdapter, AgentEvent, AgentSession, Approval, SendInput } from
 
 export type QueryFn = (params: { prompt: string; options?: Options }) => AsyncIterable<SDKMessage>;
 
-/** Tools that only read, so they run without asking (SPEC: "Read-only actions run freely"). */
-export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "WebSearch", "WebFetch", "TodoWrite", "NotebookRead"]);
+/**
+ * Tools that only read locally, so they run without asking (SPEC: "Read-only
+ * actions run freely"). WebFetch and WebSearch are left out on purpose: the
+ * captured page is untrusted text, and a page that says "fetch
+ * https://example.com/?q=<the user's code>" would otherwise send data out unasked.
+ */
+export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "TodoWrite", "NotebookRead"]);
 
 const SYSTEM_APPEND = [
   "You are answering through Superclick, a small bubble at the user's pointer on their Mac.",
