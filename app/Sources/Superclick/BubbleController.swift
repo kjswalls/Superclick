@@ -159,9 +159,7 @@ final class BubbleController: NSObject, NSWindowDelegate {
                 return
             }
             var markdown = PromptText.render(request: "", bundle: b, fullPage: m.fullPage || settings.wantsFullPage(url: b.url))
-            markdown = markdown.replacingOccurrences(of: #"- Screenshot: [^
-]*
-?"#, with: "", options: .regularExpression)
+            markdown = markdown.replacingOccurrences(of: #"- Screenshot: [^\n]*\n?"#, with: "", options: .regularExpression)
             let jpeg = b.screenshotPath.flatMap { Self.jpegBase64(path: $0) }
             self.daemon.sendCapture(requestID: requestID, markdown: markdown, screenshot: jpeg, refused: nil)
             self.onAgentCapture?(b.app.name)
