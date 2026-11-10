@@ -75,3 +75,19 @@ Answers the SPEC's open questions on tech stack and Claude Code integration. Ful
 - **No browser extension in v1.** Revisit only if Accessibility gaps show up in real use. Known gaps: canvas apps (Google Docs, Figma) and virtualized lists (Slack, Gmail, Notion).
 - **Supports macOS 15 and up**, with native glass on macOS 26 and a close material fallback on 15.
 - **Distribution outside the Mac App Store** (signed, notarized DMG with Sparkle updates), because the sandbox blocks the Accessibility features Superclick needs.
+
+## 2026-11-10 · M1 built; the page-text spike became part of it
+
+Kirby was away, so instead of running the spike first, its code became M1's capture code (`app/Sources/SuperclickCapture/PageReader.swift`) and the check ships twice: as a window in the app (menu bar → Page-text check…) and as the `pagetext` command. Kirby runs both on a Mac with the first build. If the check fails in a browser, the capture code changes, not the plan, unless Accessibility turns out not to expose the page at all.
+
+- **One Swift package, no Xcode project.** `scripts/build-app.sh` builds it and wraps it in a signed `.app`. Easy to review and to build in CI; an Xcode project can come with notarization.
+- **Swift 5 language mode for now.** The code was written in the cloud where Swift can't be compiled, so strict-concurrency issues stay warnings until it builds clean on a Mac. Then move to Swift 6 mode.
+- **CI builds the app on a macOS runner** and runs the core tests, so compile errors are caught before Kirby's first build.
+- **The bubble appears first, then fills in.** On the hotkey it shows at once with the app chip, then adds title, file and selection (one quick Accessibility read), then the page text, then the screenshot. The timings for each step are kept for the page-text check, against the 300 ms target.
+- **Enter copies the request with its context** to the clipboard in M1, so the bubble is useful before agents arrive. The footer says so. From M2 Enter sends to the agent.
+- **The daemon is optional in M1.** It holds each request with its context (in memory, 50 entries, an hour) for the context MCP server. It listens on 127.0.0.1 only, requires a token from a file only the user can read, and refuses any connection with an Origin header, so web pages can't talk to it.
+- **Hotkey through Carbon `RegisterEventHotKey`**, which needs no permission and sees no other keystrokes. ⌥Space is the default with three alternatives in Settings, since Raycast and Alfred like ⌥Space too.
+- **The cursor glow reads the real pointer image** (`NSCursor.currentSystem`) and the Accessibility pointer size, and is drawn in a click-through overlay. The system cursor is untouched.
+- **Redaction rules:** private keys, Anthropic/OpenAI/GitHub/AWS/Slack/Stripe/Google keys, JWTs, bearer tokens, secrets in URL parameters, and `password=` / `api_key:` style assignments. Each is replaced with a visible `[redacted …]` and counted in the secrets chip.
+- **Default blocklist:** password managers (1Password, Bitwarden, Dashlane, LastPass, Apple Passwords, Keychain Access, KeePassXC) and a starter list of sign-in, payment and bank sites. Editable in Settings.
+- **Known gaps.** Private windows are only caught when the title says so (Firefox, some Chromium browsers); Safari private windows aren't detected yet. VS Code and other Electron editors may not expose the file path, only the title. Paste here and its glow come with M2, when there's an answer to paste.
