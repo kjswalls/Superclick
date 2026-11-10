@@ -46,11 +46,21 @@ struct ChipsRow: View {
     }
 
     private var layout: ChipOverflow.Result {
-        let widths = chips.map { Double(ChipView.width(for: $0)) }
-        let pinned = Set(chips.indices.filter { chips[$0].kind == .secrets || chips[$0].kind == .blocked })
+        let widths: [Double] = chips.map { Double(ChipView.width(for: $0)) }
+        var pinned = Set<Int>()
+        for (i, chip) in chips.enumerated() where chip.kind == .secrets || chip.kind == .blocked {
+            pinned.insert(i)
+        }
         return ChipOverflow.layout(
             widths: widths, pinned: pinned, available: Double(width), spacing: Double(Self.spacing),
-            stackWidth: { n in Double(14 + 8 * CGFloat(min(n, 3) - 1) + 5 + Self.textWidth("+\(n)") + 10) })
+            stackWidth: Self.stackWidth)
+    }
+
+    /// Up to three overlapping 14px icons (8px apart), a 5px gap, the count, and padding.
+    static func stackWidth(_ tucked: Int) -> Double {
+        let icons: CGFloat = 14 + 8 * CGFloat(min(tucked, 3) - 1)
+        let count: CGFloat = textWidth("+\(tucked)")
+        return Double(icons + 5 + count + 10)
     }
 
     @ViewBuilder
