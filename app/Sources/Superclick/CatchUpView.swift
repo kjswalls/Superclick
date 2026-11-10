@@ -63,7 +63,8 @@ struct CatchUpView: View {
         .frame(minWidth: 520, minHeight: 460)
         .onAppear { daemon.fetchCatchUp(since: start) }
         .onChange(of: range) { _, _ in daemon.fetchCatchUp(since: start) }
-        // Answering an approval changes the cards; fetch them again.
+        // An approval asked, answered or gone, or a summary updated: fetch the cards again.
+        .onChange(of: daemon.approvalsChanged) { _, _ in daemon.fetchCatchUp(since: start) }
         .onChange(of: daemon.projects) { _, _ in daemon.fetchCatchUp(since: start) }
     }
 
@@ -115,7 +116,8 @@ private struct RequestRow: View {
     var onShow: (String) -> Bool
     var onAnswer: (String, String, Bool, String?) -> Void
     @State private var typed = ""
-    @State private var gone = false
+    /// Approvals answered here, so the card moves on to the next one before the refetch arrives.
+    @State private var answered: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -140,7 +142,7 @@ private struct RequestRow: View {
                     .foregroundStyle(.secondary)
                     .help(request.changed.joined(separator: "\n"))
             }
-            if let a = request.waiting.first, !gone {
+            if let a = request.waiting.first(where: { !answered.contains($0.id) }) {
                 approval(a)
             } else if let answer = request.answer, !answer.isEmpty {
                 Text(answer)
@@ -198,7 +200,8 @@ private struct RequestRow: View {
     private func send(_ a: PendingApproval, allow: Bool) {
         let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         onAnswer(request.id, a.id, allow && text.isEmpty, text.isEmpty ? nil : text)
-        gone = true
+        answered.insert(a.id)
+        typed = ""
     }
 
     private var icon: String {

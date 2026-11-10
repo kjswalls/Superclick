@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables: Set<AnyCancellable> = []
     let diagnostics = DiagnosticsStore()
 
+    func applicationWillTerminate(_ notification: Notification) {
+        BubbleController.noteAlive()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         Screenshot.clearOld()
         setUpStatusItem()
@@ -25,13 +29,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let last = self.diagnostics.last, last.at > report.at { return }
             self.diagnostics.last = report
         }
-        bubble.onBackgroundChange = { [weak self] in self?.updateStatusIcon() }
+        bubble.onBackgroundChange = { [weak self] in
+            self?.updateStatusIcon()
+            BubbleController.noteAlive()
+        }
         // Visible capture (DECISIONS): when an agent looks at the screen, the menu-bar icon says so.
         bubble.onAgentCapture = { [weak self] app in self?.showAgentCapture(app) }
         Notifier.shared.setUp()
         Notifier.shared.onAction = { [weak self] requestID, approvalID, action in
             self?.bubble.handle(requestID: requestID, approvalID: approvalID, action: action)
         }
+        DaemonLoginItem.shared.refreshRegistrationIfRebuilt()
         daemon.connect()
 
         // Re-register when the shortcut changes in Settings.
@@ -103,6 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ?? NSImage()
         button.image = needsAttention ? Self.badged(base) : base
         button.image?.isTemplate = !needsAttention
+        // A capture an agent just took stays visible for its 4 seconds, whatever else changes.
+        if let c = lastAgentCapture, Date().timeIntervalSince(c.at) < 4 {
+            button.image = NSImage(systemSymbolName: "eye", accessibilityDescription: "An agent looked at your screen")
+            button.image?.isTemplate = true
+        }
         // How many closed requests need you, next to the icon (SPEC: menu-bar badge).
         let count = bubble.waiting.count
         statusItem.length = count > 0 ? NSStatusItem.variableLength : NSStatusItem.squareLength
@@ -342,9 +355,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         w.contentView = NSHostingView(rootView: content())
         w.center()
         windows[id] = w
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self, weak w] _ in
             Task { @MainActor in
-                self?.windows[id] = nil
+                // Only if it's still this window: a reopened one may already have taken the slot.
+                if let self, let w, self.windows[id] === w { self.windows[id] = nil }
                 if id == "onboarding" { Permissions.shared.stopWatching() }
                 self?.updateStatusIcon()
             }

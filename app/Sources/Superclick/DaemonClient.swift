@@ -27,6 +27,7 @@ struct RunSnapshot {
     var status: String
     var final: String?
     var error: String?
+    var endedAt: Date?
 }
 
 struct ProjectRef: Equatable, Identifiable, Hashable {
@@ -84,6 +85,10 @@ enum ReplyEvent {
     case approval(id: String, tool: String, summary: String, detail: String)
     /// The daemon no longer knew that approval (it timed out, or the daemon restarted), so it was denied.
     case approvalExpired(String)
+    /// Someone answered it, here or in another window or a notification: drop it quietly.
+    case approvalResolved(String)
+    /// A move to another project didn't happen; the request keeps running where it was.
+    case moveFailed(String)
     /// After a reconnect: the request's state as the daemon has it.
     case resync(RunSnapshot)
     case done(String)
@@ -126,11 +131,20 @@ final class DaemonClient: ObservableObject {
     /// The latest "while you were away" cards, newest request first.
     @Published private(set) var catchUp: [CatchUpCard] = []
     @Published private(set) var catchUpLoaded = false
+    /// Bumped whenever an approval is asked for, answered or gone, so the catch-up window refetches.
+    @Published private(set) var approvalsChanged = 0
     /// A request the daemon is running that no bubble knows about (the app restarted). The
     /// controller makes a bubble for it so its answer and approvals aren't lost.
     var onOrphanRun: ((RunSnapshot) -> Void)?
     /// An agent called what_am_i_looking_at (M5): capture the front window and answer with `sendCapture`.
-    var onCaptureRequest: ((_ requestID: String, _ screenshot: Bool, _ fullPage: Bool) -> Void)?
+    var onCaptureRequest: ((_ requestID: String, _ screenshot: Bool, _ fullPage: Bool, _ project: String?) -> Void)?
+    /// The agent's turn stopped while the app was capturing.
+    var onCaptureCancel: ((_ requestID: String) -> Void)?
+    /// An approval left the daemon (answered anywhere, expired, cancelled), whether or not a bubble has it,
+    /// so its notification and catch-up card go away.
+    var onApprovalGone: ((_ approvalID: String) -> Void)?
+    /// Answers given while disconnected (from a notification, say), sent once the daemon is back.
+    private var queuedAnswers: [[String: Any]] = []
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .ephemeral)
     private var retry: Task<Void, Never>?
@@ -198,6 +212,9 @@ final class DaemonClient: ObservableObject {
         switch type {
         case "welcome":
             state = .connected(version: obj["version"] as? String ?? "?")
+            let queued = queuedAnswers
+            queuedAnswers = []
+            queued.forEach(send)
             return
         case "projects":
             projects = (obj["projects"] as? [[String: Any]] ?? []).compactMap(Self.project)
@@ -207,8 +224,11 @@ final class DaemonClient: ObservableObject {
             return
         case "capture.request":
             if let rid = obj["requestId"] as? String {
-                onCaptureRequest?(rid, obj["screenshot"] as? Bool ?? true, obj["fullPage"] as? Bool ?? false)
+                onCaptureRequest?(rid, obj["screenshot"] as? Bool ?? true, obj["fullPage"] as? Bool ?? false, obj["project"] as? String)
             }
+            return
+        case "capture.cancel":
+            if let rid = obj["requestId"] as? String { onCaptureCancel?(rid) }
             return
         case "catchup":
             catchUp = (obj["cards"] as? [[String: Any]] ?? []).compactMap(Self.card)
@@ -221,8 +241,8 @@ final class DaemonClient: ObservableObject {
             for r in runs {
                 guard let id = r["id"] as? String else { continue }
                 guard let handler = handlers[id] else {
-                    let snap = Self.snapshot(r)
-                    if snap.status == "running" { onOrphanRun?(snap) }
+                    // The controller decides: a new bubble, or re-attaching one that gave up on it.
+                    onOrphanRun?(Self.snapshot(r))
                     continue
                 }
                 seen.insert(id)
@@ -235,6 +255,11 @@ final class DaemonClient: ObservableObject {
             }
             awaitingSync = []
             return
+        case "approval.expired", "approval.resolved":
+            if let aid = obj["approvalId"] as? String { onApprovalGone?(aid) }
+            approvalsChanged += 1
+        case "approval.needed":
+            approvalsChanged += 1
         default:
             break
         }
@@ -250,6 +275,8 @@ final class DaemonClient: ObservableObject {
             event = .approval(id: str("approvalId"), tool: str("tool"), summary: str("summary"),
                               detail: obj["detail"] as? String ?? str("summary"))
         case "approval.expired": event = .approvalExpired(str("approvalId"))
+        case "approval.resolved": event = .approvalResolved(str("approvalId"))
+        case "reroute.failed": event = .moveFailed(str("message"))
         case "reply.done": event = .done(str("text"))
         case "reply.error": event = .error(str("message"))
         default: event = nil
@@ -280,7 +307,8 @@ final class DaemonClient: ObservableObject {
         return RunSnapshot(id: r["id"] as? String ?? "", asked: r["asked"] as? String ?? "",
                            route: (r["route"] as? [String: Any]).flatMap(Self.route), text: r["text"] as? String ?? "",
                            tools: r["tools"] as? [String] ?? [], approvals: approvals,
-                           status: r["status"] as? String ?? "running", final: r["final"] as? String, error: r["error"] as? String)
+                           status: r["status"] as? String ?? "running", final: r["final"] as? String, error: r["error"] as? String,
+                           endedAt: (r["endedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) })
     }
 
     private static func card(_ c: [String: Any]) -> CatchUpCard? {
@@ -408,7 +436,7 @@ final class DaemonClient: ObservableObject {
         var obj: [String: Any] = ["type": "approval.answer", "approvalId": id, "allow": allow]
         if let requestID { obj["id"] = requestID }
         if let message, !message.isEmpty { obj["message"] = message }
-        send(obj)
+        if isConnected { send(obj) } else { queuedAnswers.append(obj) }
     }
 
     func cancel(requestID: String) {

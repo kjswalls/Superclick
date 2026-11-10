@@ -121,6 +121,8 @@ struct ReplyView: View {
     var onStop: () -> Void
     @FocusState private var replyFocused: Bool
     @FocusState private var moveFocused: Bool
+    /// A deliberate move teaches a rule; answering "not sure where this goes" doesn't.
+    @State private var moveLearns = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -205,6 +207,7 @@ struct ReplyView: View {
             Divider()
             Button("Another project…") {
                 model.showMove = true
+                moveLearns = true
                 moveFocused = true
             }
         } label: {
@@ -234,6 +237,7 @@ struct ReplyView: View {
             Button("Keep in \(r.project)") { model.settleRoute() }
             Button("Other…") {
                 model.showMove = true
+                moveLearns = false
                 moveFocused = true
             }
             .buttonStyle(.borderless)
@@ -260,9 +264,9 @@ struct ReplyView: View {
         let name = model.moveName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         if let p = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-            onMove(p.id, nil, true)
+            onMove(p.id, nil, moveLearns)
         } else {
-            onMove(nil, name, true)
+            onMove(nil, name, moveLearns)
         }
     }
 

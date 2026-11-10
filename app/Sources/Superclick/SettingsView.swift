@@ -27,7 +27,12 @@ final class DaemonLoginItem: ObservableObject {
     func set(_ on: Bool) {
         error = nil
         do {
-            if on { try service.register() } else { try service.unregister() }
+            if on {
+                try service.register()
+                UserDefaults.standard.set(buildID, forKey: "daemonLoginItemBuild")
+            } else {
+                try service.unregister()
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -35,6 +40,31 @@ final class DaemonLoginItem: ObservableObject {
     }
 
     func openLoginItems() { SMAppService.openSystemSettingsLoginItems() }
+
+    /// The bundled daemon's path and build date, to notice a rebuilt or moved app.
+    private var buildID: String {
+        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/superclick-daemon")
+        let date = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        return "\(url.path)|\(date?.timeIntervalSince1970 ?? 0)"
+    }
+
+    /// At launch: macOS ties the login item to the build that registered it, so after a
+    /// rebuild or a move it can point at a daemon that's gone. Register this one instead.
+    func refreshRegistrationIfRebuilt() {
+        refresh()
+        guard status == .enabled, isBundled else { return }
+        let key = "daemonLoginItemBuild"
+        let id = buildID
+        guard UserDefaults.standard.string(forKey: key) != id else { return }
+        try? service.unregister()
+        do {
+            try service.register()
+            UserDefaults.standard.set(id, forKey: key)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        refresh()
+    }
 }
 
 struct SettingsView: View {

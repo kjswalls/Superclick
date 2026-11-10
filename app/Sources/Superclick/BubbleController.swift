@@ -63,9 +63,13 @@ final class BubbleController: NSObject, NSWindowDelegate {
             lastExternalApp = front
         }
         daemon.onOrphanRun = { [weak self] snap in self?.adopt(snap) }
-        daemon.onCaptureRequest = { [weak self] id, screenshot, fullPage in
-            self?.captureForAgent(requestID: id, screenshot: screenshot, fullPage: fullPage)
+        daemon.onCaptureRequest = { [weak self] id, screenshot, fullPage, project in
+            self?.captureForAgent(requestID: id, screenshot: screenshot, fullPage: fullPage, project: project)
         }
+        daemon.onCaptureCancel = { [weak self] id in
+            self?.agentCaptures.removeValue(forKey: id)?.markClosed(keepScreenshot: false)
+        }
+        daemon.onApprovalGone = { id in Notifier.shared.clear(approvalID: id) }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -132,7 +136,10 @@ final class BubbleController: NSObject, NSWindowDelegate {
     /// what_am_i_looking_at (M5): the same capture as a summon, with the same
     /// blocklist and redaction, but no bubble. The agent's call needed the
     /// user's OK first, and the menu-bar icon shows that a capture happened.
-    private func captureForAgent(requestID: String, screenshot: Bool, fullPage: Bool) {
+    /// Captures agents asked for that are still running, so a cancelled one can be dropped.
+    private var agentCaptures: [String: BubbleModel] = [:]
+
+    private func captureForAgent(requestID: String, screenshot: Bool, fullPage: Bool, project: String?) {
         Permissions.shared.refresh()
         let me = ProcessInfo.processInfo.processIdentifier
         let frontmost = NSWorkspace.shared.frontmostApplication
@@ -148,21 +155,28 @@ final class BubbleController: NSObject, NSWindowDelegate {
         var settings = SettingsStore.shared.value
         settings.captureScreenshot = settings.captureScreenshot && screenshot
         let m = BubbleModel(app: front, summonedAt: now(), settings: settings)
-        m.fullPage = fullPage || settings.wantsFullPage(url: nil)
+        // Kept here, not on the model: reading the page resets the model's own flag.
+        let wantsFull = fullPage
+        agentCaptures[requestID] = m
         m.start(onReport: { _ in })
         m.whenCaptured { [weak self, weak m] in
             guard let self, let m else { return }
+            // Called off (Stop, or the turn ended) while capturing: send nothing.
+            guard self.agentCaptures.removeValue(forKey: requestID) != nil else {
+                m.markClosed(keepScreenshot: false) // deletes a screenshot taken after the cancel
+                return
+            }
             let b = m.bundle
             defer { m.markClosed(keepScreenshot: false) }
             if let reason = b.blockedReason {
                 self.daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: reason)
                 return
             }
-            var markdown = PromptText.render(request: "", bundle: b, fullPage: m.fullPage || settings.wantsFullPage(url: b.url))
+            var markdown = PromptText.render(request: "", bundle: b, fullPage: wantsFull || settings.wantsFullPage(url: b.url))
             markdown = markdown.replacingOccurrences(of: #"- Screenshot: [^\n]*\n?"#, with: "", options: .regularExpression)
             let jpeg = b.screenshotPath.flatMap { Self.jpegBase64(path: $0) }
             self.daemon.sendCapture(requestID: requestID, markdown: markdown, screenshot: jpeg, refused: nil)
-            self.onAgentCapture?(b.app.name)
+            self.onAgentCapture?(project.map { "\(b.app.name) for \($0)" } ?? b.app.name)
         }
     }
 
@@ -185,13 +199,37 @@ final class BubbleController: NSObject, NSWindowDelegate {
 
     /// A request the daemon is running that this app doesn't know (it restarted mid-request).
     private func adopt(_ snap: RunSnapshot) {
-        guard model(forRequest: snap.id) == nil else { return }
+        let running = snap.status == "running"
+        if let m = model(forRequest: snap.id) {
+            // A bubble that gave up on the request (the daemon was away for a while): pick it up again.
+            if running { daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) } }
+            m.apply(.resync(snap))
+            onBackgroundChange?()
+            return
+        }
+        // A run that finished while the app wasn't running comes back as an unseen answer.
+        // One that finished before the app last quit was seen then (or can be found in catch-up).
+        if !running {
+            guard let ended = snap.endedAt, ended > aliveAtLaunch else { return }
+        }
         let m = BubbleModel(restoring: snap, settings: SettingsStore.shared.value)
         wire(m)
-        daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) }
+        if running { daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) } }
         remember(m)
         for a in m.approvals { notify(m, .approval(a)) }
+        if !running { notify(m, .finished) }
         onBackgroundChange?()
+    }
+
+    /// When the app last ran (read once at launch), so runs it already knew about aren't brought back after a restart.
+    private let aliveAtLaunch = BubbleController.lastAlive
+
+    static var lastAlive: Date {
+        UserDefaults.standard.object(forKey: "lastAliveAt") as? Date ?? .distantPast
+    }
+
+    static func noteAlive() {
+        UserDefaults.standard.set(Date(), forKey: "lastAliveAt")
     }
 
     /// Hooks a bubble's background events up to the menu bar and notifications.
@@ -218,7 +256,23 @@ final class BubbleController: NSObject, NSWindowDelegate {
 
     /// A notification's button was pressed.
     func handle(requestID: String, approvalID: String?, action: Notifier.Action) {
-        guard let m = model(forRequest: requestID) else { return }
+        guard let m = model(forRequest: requestID) else {
+            // No bubble for it (the app was restarted, say): answer the daemon directly.
+            // It's sent once connected; if the approval is gone by then, the daemon says so.
+            guard let a = approvalID else { return }
+            switch action {
+            case .allow: daemon.answerApproval(id: a, requestID: requestID, allow: true, message: nil)
+            case .deny: daemon.answerApproval(id: a, requestID: requestID, allow: false, message: nil)
+            case .reply(let text): daemon.answerApproval(id: a, requestID: requestID, allow: false, message: text)
+            case .show: break
+            }
+            return
+        }
+        // A stale notification for an approval that's already been answered or has gone.
+        if let a = approvalID, action != .show, !m.approvals.contains(where: { $0.id == a }) {
+            Notifier.shared.clear(approvalID: a)
+            return
+        }
         switch action {
         case .show:
             show(m)

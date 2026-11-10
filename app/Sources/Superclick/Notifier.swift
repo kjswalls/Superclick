@@ -8,7 +8,7 @@ import UserNotifications
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Notifier()
 
-    enum Action {
+    enum Action: Equatable {
         case show
         case allow
         case deny
@@ -63,7 +63,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         content.threadIdentifier = requestID
         content.userInfo = ["requestID": requestID, "approvalID": approval.id]
-        post(id: "approval-\(approval.id)", content)
+        post(id: "approval-\(approval.id)", content, unless: { self.cleared.contains(approval.id) })
     }
 
     func answerReady(requestID: String, project: String, asked: String, answer: String, failed: Bool) {
@@ -77,14 +77,21 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         post(id: "answer-\(requestID)", content)
     }
 
-    private func post(id: String, _ content: UNMutableNotificationContent) {
+    /// Approvals already answered or gone. Checked again just before posting, since asking
+    /// for permission is asynchronous and a quick answer in the bubble can come first.
+    private var cleared = Set<String>()
+
+    private func post(id: String, _ content: UNMutableNotificationContent, unless gone: @escaping @MainActor () -> Bool = { false }) {
         authorized {
+            guard !gone() else { return }
             self.center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
         }
     }
 
     /// Takes an approval's notification away once it's answered somewhere else.
     func clear(approvalID: String) {
+        if cleared.count > 500 { cleared.removeAll() }
+        cleared.insert(approvalID)
         center.removeDeliveredNotifications(withIdentifiers: ["approval-\(approvalID)"])
     }
 

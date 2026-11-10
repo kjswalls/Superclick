@@ -64,7 +64,13 @@ final class BubbleModel: ObservableObject {
     @Published private(set) var finalText: String?
     @Published private(set) var toolLines: [String] = []
     /// Approvals waiting for an answer, oldest first. The card shows the first.
-    @Published private(set) var approvals: [PendingApproval] = []
+    @Published private(set) var approvals: [PendingApproval] = [] {
+        // However an approval goes (answered, expired, the turn ended, Stop), its notification goes too.
+        didSet {
+            let remaining = Set(approvals.map(\.id))
+            for a in oldValue where !remaining.contains(a.id) { Notifier.shared.clear(approvalID: a.id) }
+        }
+    }
     @Published var approvalReply = ""
     // Where the coordinator sent it (M3).
     @Published private(set) var route: RouteInfo?
@@ -442,11 +448,24 @@ final class BubbleModel: ObservableObject {
             approvals.removeAll { $0.id == id }
             status = "That approval had expired, so Claude Code was told no."
             onBackgroundChange?()
+        case .approvalResolved(let id):
+            approvals.removeAll { $0.id == id }
+            onBackgroundChange?()
+        case .moveFailed(let message):
+            // The request is still running where it was; the daemon resends its state.
+            status = message
+            routeSettled = true
+            onBackgroundChange?()
         case .resync(let snap):
+            let wasRunning = phase != .done && phase != .failed
+            let known = Set(approvals.map(\.id))
             if let r = snap.route { route = r }
             replyText = snap.text
             toolLines = Array(snap.tools.suffix(4))
             approvals = snap.approvals
+            // What happened while the app was away still gets its notification.
+            for a in snap.approvals where !known.contains(a.id) { onNotable?(self, .approval(a)) }
+            let finishing = wasRunning && (snap.status == "done" || snap.status == "failed")
             switch snap.status {
             case "done":
                 finalText = snap.final ?? snap.text
@@ -460,6 +479,7 @@ final class BubbleModel: ObservableObject {
             default:
                 phase = snap.text.isEmpty ? .waiting : .streaming
             }
+            if finishing { onNotable?(self, .finished) }
             onBackgroundChange?()
         case .done(let text):
             finalText = text.isEmpty ? replyText : text

@@ -72,6 +72,8 @@ private struct ProjectRow: View {
     @State private var rulePattern = ""
     @State private var ruleKind = "url"
     @State private var confirmRemove = false
+    /// Set on Remove, so leaving the field afterwards doesn't save the project back.
+    @State private var removed = false
     @FocusState private var focus: Field?
 
     enum Field { case name, description }
@@ -151,7 +153,10 @@ private struct ProjectRow: View {
         .onChange(of: focus) { old, _ in if old != nil { save() } }
         .onDisappear(perform: save)
         .confirmationDialog("Remove \(project.name)?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) { daemon.removeProject(id: project.id) }
+            Button("Remove", role: .destructive) {
+                removed = true
+                daemon.removeProject(id: project.id)
+            }
         } message: {
             Text("Its rules go too. The folder and its files stay where they are.")
         }
@@ -164,7 +169,7 @@ private struct ProjectRow: View {
 
     private func save() {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !n.isEmpty, n != project.name || description != project.description else { return }
+        guard !removed, !n.isEmpty, n != project.name || description != project.description else { return }
         daemon.saveProject(id: project.id, name: n, description: description)
     }
 
