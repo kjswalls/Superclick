@@ -101,7 +101,7 @@ public enum PageReader {
             }
         }
         defer { if r.usedEnhancedUI { axSetBool(app, "AXEnhancedUserInterface", false) } }
-        r.locateMs = ms(since: tStart)
+        r.locateMs = elapsedMs(since: tStart)
 
         let window = foundWindow
         if let w = window { r.windowTitle = axString(w, kAXTitleAttribute as String) }
@@ -117,11 +117,11 @@ public enum PageReader {
             r.selection = axString(focused, kAXSelectedTextAttribute as String)
         }
         if r.selection?.isEmpty ?? false { r.selection = nil }
-        r.selectionMs = ms(since: tSel)
+        r.selectionMs = elapsedMs(since: tSel)
 
         let tA = now()
         r.markerText = textViaMarkers(web)
-        r.markerMs = ms(since: tA)
+        r.markerMs = elapsedMs(since: tA)
         let markersWorked = r.markerText?.isEmpty == false
 
         var headings: [Heading] = []
@@ -130,7 +130,7 @@ public enum PageReader {
             let walker = TreeWalker(nodeLimit: options.walkNodeLimit, seconds: options.walkSeconds)
             walker.walk(web)
             r.walkText = walker.text
-            r.walkMs = ms(since: tB)
+            r.walkMs = elapsedMs(since: tB)
             r.walkNodes = walker.nodes
             r.walkTruncated = walker.truncated
             headings = walker.headings

@@ -65,7 +65,7 @@ public func findFirst(role: String, under root: AXUIElement, limit: Int = 4000) 
 }
 
 public func now() -> Double { CFAbsoluteTimeGetCurrent() }
-public func ms(since t: Double) -> Int { Int(((now() - t) * 1000).rounded()) }
+public func elapsedMs(since t: Double) -> Int { Int(((now() - t) * 1000).rounded()) }
 
 public func pump(seconds: Double) {
     RunLoop.current.run(until: Date().addingTimeInterval(seconds))

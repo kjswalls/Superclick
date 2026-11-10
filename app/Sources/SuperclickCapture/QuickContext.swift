@@ -48,7 +48,7 @@ public struct QuickContext: Sendable {
                 q.selection = sel
             }
         }
-        q.ms = ms(since: t0)
+        q.ms = elapsedMs(since: t0)
         return q
     }
 

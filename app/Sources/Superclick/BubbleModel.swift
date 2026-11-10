@@ -108,7 +108,7 @@ final class BubbleModel: ObservableObject {
             if wantScreenshot && stillCapturing {
                 let t = now()
                 let url = try? await Screenshot.captureFrontWindow(pid: pid, id: captureID)
-                await self.applyScreenshot(url, ms: ms(since: t))
+                await self.applyScreenshot(url, ms: elapsedMs(since: t))
             } else {
                 await self.applyScreenshot(nil, ms: 0)
             }
@@ -124,7 +124,7 @@ final class BubbleModel: ObservableObject {
         if !removed.contains(.selection) { bundle.set(.selection, q.selection) }
         bundle.timings["quick"] = q.ms
         lastReport.quickMs = q.ms
-        lastReport.sinceHotkeyMs = ms(since: summonedAt)
+        lastReport.sinceHotkeyMs = elapsedMs(since: summonedAt)
         if Blocklist.looksPrivate(windowTitle: q.windowTitle) {
             bundle.block(reason: "this looks like a private window")
             lastReport.blocked = bundle.blockedReason
@@ -147,7 +147,7 @@ final class BubbleModel: ObservableObject {
         fullPage = settings.wantsFullPage(url: r.url)
         bundle.timings["page"] = r.fastestFullReadMs
         lastReport.page = r
-        lastReport.pageSinceHotkeyMs = ms(since: summonedAt)
+        lastReport.pageSinceHotkeyMs = elapsedMs(since: summonedAt)
         lastReport.redactions = bundle.redactionCount
         return true
     }
@@ -165,7 +165,7 @@ final class BubbleModel: ObservableObject {
     }
 
     func markVisible() {
-        let t = ms(since: summonedAt)
+        let t = elapsedMs(since: summonedAt)
         bundle.timings["visible"] = t
         lastReport.visibleMs = t
     }
