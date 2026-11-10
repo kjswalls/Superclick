@@ -117,10 +117,10 @@ New projects without a folder get one in `~/Library/Application Support/Supercli
 
 ## M4: Follow long tasks
 
-- **Notifications** (macOS Notification Center, never on the cursor): when a closed bubble needs an approval you get Allow, Deny, or Reply (typed instruction) right in the notification; when it finishes you get "answer ready". Toggle both in Settings → Notifications.
+- **Notifications** (macOS Notification Center, never on the cursor): when a closed bubble needs an approval you get Allow, Deny, or Reply (typed instruction) right in the notification; an approval waits up to 12 hours; when it finishes you get "answer ready". Toggle both in Settings → Notifications.
 - **Menu bar**: a count next to the icon for answers and approvals waiting, a row per running or waiting request with Show and Stop, and **While you were away…**: one card per project with what ran, what changed, and what's waiting, with approvals you can answer there.
 - **Restarts**: if the app quits or reconnects, requests the daemon is still running reappear in the menu.
-- **Daemon at login**: `scripts/build-app.sh` compiles the daemon (needs Bun) into the app with Claude Code inside it. Settings → Daemon → **Start the daemon at login** registers it with macOS (System Settings → General → Login Items shows it). Stop any `bun run start` copy first, since both want port 47811.
+- **Daemon at login**: `scripts/build-app.sh` compiles the daemon (needs Bun) into the app with Claude Code inside it. Settings → Daemon → **Start the daemon at login** registers it with macOS (System Settings → General → Login Items shows it). Stop any `bun run start` copy first, since both want port 47811. Its log is `~/Library/Logs/Superclick/daemon.log`.
 
 **What to try**: ask for something long ("refactor X and run the tests"), press Esc, switch apps, and answer the approval from the notification. Then open While you were away….
 

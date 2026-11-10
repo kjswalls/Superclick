@@ -134,3 +134,15 @@ Eleven findings, all fixed in M5's commit: narrow learned rules (above), reroute
 - **`recent_context` runs freely**: it only returns what the user already sent with a recent request.
 - **A fresh MCP server instance per turn**, since the SDK's in-process servers hold per-query state.
 
+
+## 2026-11-10 · Adversarial reviews of M4 and M5
+
+Twenty-four findings between them, all fixed except where noted. The ones that changed a decision:
+
+- **Approvals wait 12 hours, not 10 minutes**, since following a task from the desktop means coming back much later. When one ends without an answer (timeout, Stop, the turn ending), the app is told, so no bubble, badge or notification keeps offering Allow.
+- **`recent_context` sees only its own project's captures** and defaults to the one sent with the turn, so one project's agent can't read a page or email you sent to another.
+- **`what_am_i_looking_at` is declared `always_ask`** to Claude Code, so an allow rule in the user's own settings can't skip its approval card.
+- **Reads of paths starting with `~` always ask**, since Claude Code expands them to the home folder.
+- **Learned site rules skip segments every page shares** (`/wiki/`, `/item`, `/questions/`), so a move teaches one article or section, not the whole site.
+- **The login daemon logs to `~/Library/Logs/Superclick/daemon.log`** (owner-only) instead of `/tmp`, gets the login shell's PATH, and exits cleanly when another daemon has the port so launchd doesn't restart it in a loop.
+- Not done: a project folder on a stalled network share can still block the daemon briefly on its first path check (results are cached for a few seconds after that).
