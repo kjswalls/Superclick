@@ -30,7 +30,7 @@ const fake: QueryFn = async function* (p) {
 let w: ReturnType<typeof world>;
 beforeAll(() => {
   w = world(new ClaudeCodeAdapter(fake));
-  daemon = startDaemon({ token, port: 0, log: () => {}, sessions: w.sessions, coordinator: w.coordinator });
+  daemon = startDaemon({ token, port: 0, log: () => {}, sessions: w.sessions, coordinator: w.coordinator, journal: w.journal });
 });
 
 function connect() {
@@ -149,3 +149,14 @@ test("a refused request gets an error on its own id; an expired approval says so
   expect(await c.until((m) => m.type === "approval.expired")).toMatchObject({ id: "r9", approvalId: "nope" });
   c.ws.close();
 });
+
+test("catch-up cards come back over the socket", async () => {
+  const c = connect();
+  await c.ready;
+  c.ws.send(JSON.stringify({ type: "catchup.get", since: 0 }));
+  const m = await c.until((x) => x.type === "catchup");
+  const shop = m.cards.find((x: any) => x.project === "shop");
+  expect(shop.requests.find((r: any) => r.id === "r3")).toMatchObject({ status: "done", text: "quick one" });
+  c.ws.close();
+});
+

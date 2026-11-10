@@ -3,6 +3,7 @@ import { ClaudeCodeAdapter } from "./agents/claudeCode.ts";
 import { QuickModel } from "./agents/quick.ts";
 import { Coordinator } from "./coordinator.ts";
 import { openDatabase } from "./db.ts";
+import { Journal } from "./journal.ts";
 import { ProjectRegistry } from "./projects.ts";
 import { DEFAULT_PORT, VERSION, startDaemon } from "./server.ts";
 import { SessionManager } from "./sessions.ts";
@@ -15,7 +16,8 @@ const registry = new ProjectRegistry(db);
 const quick = new QuickModel(registry.folder(registry.inbox));
 const sessions = new SessionManager(new ClaudeCodeAdapter(), registry, db, quick);
 const coordinator = new Coordinator(registry, db, quick, { summaries: (id) => sessions.summary(id) });
-const { server } = startDaemon({ token, port, sessions, coordinator });
+const journal = new Journal(db);
+const { server } = startDaemon({ token, port, sessions, coordinator, journal });
 console.log(`[superclick] daemon ${VERSION} listening on ws://127.0.0.1:${server.port}/v1`);
 console.log(`[superclick] data in ${superclickHome()}`);
 

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The daemon as a login item: Superclick registers it with SMAppService (Settings → Start the daemon at login). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.superclick.daemon</string>
+  <key>BundleProgram</key>
+  <string>Contents/MacOS/superclick-daemon</string>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>dev.superclick.Superclick</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>/tmp/superclick-daemon.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/superclick-daemon.log</string>
+</dict>
+</plist>

@@ -83,6 +83,13 @@ final class BubbleModel: ObservableObject {
     var seen = false
     /// Called when something changes while the bubble is closed (answer ready, approval needed).
     var onBackgroundChange: (() -> Void)?
+    /// Called for the moments worth a notification: a new approval, or the turn finishing.
+    var onNotable: ((BubbleModel, Notable) -> Void)?
+
+    enum Notable {
+        case approval(PendingApproval)
+        case finished
+    }
 
     let summonedAt: Double
     /// Set when the bubble closes: late capture stages stop and clean up after themselves.
@@ -101,6 +108,22 @@ final class BubbleModel: ObservableObject {
             name: app.localizedName ?? "App", bundleID: app.bundleIdentifier, pid: app.processIdentifier)
         bundle = ContextBundle(app: info)
         lastReport = CaptureReport(appName: info.name, bundleID: info.bundleID)
+    }
+
+    /// A bubble for a request the daemon is running that this app didn't start
+    /// (it was restarted mid-request). There's no capture; the reply is what matters.
+    init(restoring snap: RunSnapshot, settings: AppSettings) {
+        summonedAt = now()
+        self.settings = settings
+        let info = AppInfo(name: snap.route?.project ?? "Superclick", bundleID: nil, pid: 0)
+        bundle = ContextBundle(app: info)
+        lastReport = CaptureReport(appName: info.name, bundleID: nil)
+        captureFinished = true
+        closed = true
+        requestID = snap.id
+        askedText = snap.asked
+        sentAt = Date()
+        apply(.resync(snap))
     }
 
     var pid: pid_t { bundle.app.pid }
@@ -410,7 +433,9 @@ final class BubbleModel: ObservableObject {
             pushTool(summary)
         case .approval(let id, let tool, let summary, let detail):
             if !approvals.contains(where: { $0.id == id }) {
-                approvals.append(PendingApproval(id: id, tool: tool, summary: summary, detail: detail))
+                let a = PendingApproval(id: id, tool: tool, summary: summary, detail: detail)
+                approvals.append(a)
+                onNotable?(self, .approval(a))
             }
             onBackgroundChange?()
         case .approvalExpired(let id):
@@ -442,12 +467,15 @@ final class BubbleModel: ObservableObject {
             phase = .done
             approvals = []
             finishedAt = Date()
+            onNotable?(self, .finished)
             onBackgroundChange?()
         case .error(let message):
             phase = .failed
             approvals = []
             status = message
             finishedAt = Date()
+            // A stop the user asked for isn't news.
+            if message != "Cancelled." { onNotable?(self, .finished) }
             onBackgroundChange?()
         }
     }

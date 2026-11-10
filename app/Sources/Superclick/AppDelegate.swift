@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.diagnostics.last = report
         }
         bubble.onBackgroundChange = { [weak self] in self?.updateStatusIcon() }
+        Notifier.shared.setUp()
+        Notifier.shared.onAction = { [weak self] requestID, approvalID, action in
+            self?.bubble.handle(requestID: requestID, approvalID: approvalID, action: action)
+        }
         daemon.connect()
 
         // Re-register when the shortcut changes in Settings.
@@ -80,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ?? NSImage()
         button.image = needsAttention ? Self.badged(base) : base
         button.image?.isTemplate = !needsAttention
+        // How many closed requests need you, next to the icon (SPEC: menu-bar badge).
+        let count = bubble.waiting.count
+        statusItem.length = count > 0 ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        button.title = count > 0 ? "\(count)" : ""
+        button.imagePosition = count > 0 ? .imageLeading : .imageOnly
         button.toolTip = bubble.hasWaitingAnswer ? "An answer is waiting" : needsAttention ? "Superclick needs your attention" : "Superclick"
     }
 
@@ -116,7 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if waiting.isEmpty && working.isEmpty, let m = bubble.lastAnswered {
             menu.addItem(item("Show last answer · \(m.projectName)", #selector(showLastAnswer)))
         }
-        if bubble.lastAnswered != nil { menu.addItem(.separator()) }
+        if daemon.isConnected {
+            menu.addItem(item("While you were away…", #selector(showCatchUp)))
+        }
+        if bubble.lastAnswered != nil || daemon.isConnected { menu.addItem(.separator()) }
 
         let summon = NSMenuItem(title: "Summon", action: #selector(summonFromMenu), keyEquivalent: "")
         summon.target = self
@@ -244,6 +256,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func showSettings() {
         present(id: "settings", title: "Superclick Settings", size: NSSize(width: 560, height: 560)) {
             SettingsView(store: SettingsStore.shared)
+        }
+    }
+
+    @objc func showCatchUp() {
+        let seen = SettingsStore.shared.value.catchUpSeenAt
+        // First visit: the last day. After that, since the last visit.
+        let since = seen > 0 ? Date(timeIntervalSince1970: seen) : Date().addingTimeInterval(-24 * 3600)
+        SettingsStore.shared.value.catchUpSeenAt = Date().timeIntervalSince1970
+        windows["catchup"]?.close()
+        windows["catchup"] = nil
+        present(id: "catchup", title: "While you were away", size: NSSize(width: 580, height: 620)) {
+            CatchUpView(
+                daemon: self.daemon, since: since,
+                onShow: { [weak self] id in
+                    guard let self, let m = self.bubble.model(forRequest: id) else { return false }
+                    self.windows["catchup"]?.close()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(150))
+                        self.bubble.show(m)
+                    }
+                    return true
+                },
+                onAnswer: { [weak self] requestID, approvalID, allow, message in
+                    guard let self else { return }
+                    if let m = self.bubble.model(forRequest: requestID) {
+                        self.bubble.answer(m, approval: approvalID, allow: allow, message: message)
+                    } else {
+                        self.daemon.answerApproval(id: approvalID, requestID: requestID, allow: allow, message: message)
+                        Notifier.shared.clear(approvalID: approvalID)
+                    }
+                })
         }
     }
 

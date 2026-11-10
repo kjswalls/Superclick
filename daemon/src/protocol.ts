@@ -34,6 +34,8 @@ export type ClientMessage =
   /** Moves a request to another project. `name` is typed in the bubble and makes a new project if none has it. */
   | { type: "request.reroute"; id: string; project?: string; name?: string }
   | { type: "projects.list" }
+  /** The "while you were away" cards: activity since `since` (ms since 1970). */
+  | { type: "catchup.get"; since: number }
   | { type: "projects.save"; project: { id?: string; name: string; paths?: string[]; description?: string } }
   | { type: "projects.remove"; id: string }
   | { type: "rules.save"; projectId: string; kind: "url" | "app"; pattern: string }
@@ -58,6 +60,7 @@ export type ServerMessage =
   | { type: "reply.error"; id: string; message: string }
   | { type: "context"; captureId: string; part: string; text: string | null }
   | { type: "projects"; projects: ProjectInfo[] }
+  | { type: "catchup"; since: number; cards: CatchUpCard[] }
   | { type: "pong" }
   | { type: "error"; error: string; detail?: string };
 
@@ -77,6 +80,8 @@ export interface RouteInfo {
 
 export interface RunSnapshot {
   id: string;
+  /** The first line of what was asked, for a bubble the app no longer has (it restarted). */
+  asked: string;
   route?: RouteInfo;
   text: string;
   tools: string[];
@@ -98,6 +103,9 @@ export interface ProjectInfo {
   updatedAt?: number;
   rules: { id: number; kind: "url" | "app"; pattern: string; source: string }[];
 }
+
+export type { CatchUpCard } from "./journal.ts";
+import type { CatchUpCard } from "./journal.ts";
 
 export class ProtocolError extends Error {}
 
@@ -179,6 +187,9 @@ export function parseClientMessage(raw: string): ClientMessage {
         name: isStr(v.name) && v.name.trim() ? v.name.trim() : undefined };
     case "projects.list":
       return { type: "projects.list" };
+    case "catchup.get":
+      if (typeof v.since !== "number" || !Number.isFinite(v.since)) throw new ProtocolError("catchup.get needs since (ms)");
+      return { type: "catchup.get", since: v.since };
     case "projects.save": {
       const p = v.project;
       if (!isObj(p) || !isStr(p.name) || !p.name.trim()) throw new ProtocolError("projects.save needs a project with a name");

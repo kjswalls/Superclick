@@ -29,6 +29,11 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var captureScreenshot = true
     public var blocklist = Blocklist.standard
     public var onboardingDone = false
+    /// macOS notifications when a closed bubble's answer is ready or needs an OK (M4).
+    public var notifyWhenDone = true
+    public var notifyForApprovals = true
+    /// When the "while you were away" cards were last opened (seconds since 1970).
+    public var catchUpSeenAt: Double = 0
 
     public init() {}
 
@@ -40,6 +45,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case hotkey, fullPageByDefault, fullPageSites, captureScreenshot, blocklist, onboardingDone
+        case notifyWhenDone, notifyForApprovals, catchUpSeenAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -51,5 +57,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         captureScreenshot = (try? c.decodeIfPresent(Bool.self, forKey: .captureScreenshot)) ?? d.captureScreenshot
         blocklist = (try? c.decodeIfPresent(Blocklist.self, forKey: .blocklist)) ?? d.blocklist
         onboardingDone = (try? c.decodeIfPresent(Bool.self, forKey: .onboardingDone)) ?? d.onboardingDone
+        notifyWhenDone = (try? c.decodeIfPresent(Bool.self, forKey: .notifyWhenDone)) ?? d.notifyWhenDone
+        notifyForApprovals = (try? c.decodeIfPresent(Bool.self, forKey: .notifyForApprovals)) ?? d.notifyForApprovals
+        catchUpSeenAt = (try? c.decodeIfPresent(Double.self, forKey: .catchUpSeenAt)) ?? d.catchUpSeenAt
     }
 }

@@ -12,6 +12,8 @@ export type AgentEvent =
   | { type: "tool"; tool: string; summary: string }
   /** The agent wants to do something that needs the user's OK. */
   | { type: "approval"; approvalId: string; tool: string; summary: string; detail: string }
+  /** The agent was allowed to write this file (for the catch-up cards' "what changed"). */
+  | { type: "changed"; path: string }
   /** The turn finished. `text` is the final answer, the part "Paste here" pastes. */
   | { type: "done"; text: string }
   | { type: "error"; message: string };

@@ -13,11 +13,12 @@ import {
   type RunSnapshot,
   type ServerMessage,
 } from "./protocol.ts";
+import type { Journal } from "./journal.ts";
 import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
 
 export const DEFAULT_PORT = 47811;
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 
 export interface DaemonOptions {
   token: string;
@@ -26,6 +27,8 @@ export interface DaemonOptions {
   /** Agent sessions and the coordinator (M2, M3). Without them the daemon only holds requests, as in M1. */
   sessions?: SessionManager;
   coordinator?: Coordinator;
+  /** The event log behind the catch-up cards (M4). */
+  journal?: Journal;
   log?: (line: string) => void;
 }
 
@@ -115,7 +118,16 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
     runs.get(id)?.abort.abort();
     finished.delete(id);
     const abort = new AbortController();
-    const snap: RunSnapshot = { id, text: "", tools: [], approvals: [], status: "running", startedAt: Date.now() };
+    const firstLine = text.split("\n")[0]!.slice(0, 200);
+    const snap: RunSnapshot = { id, asked: firstLine, text: "", tools: [], approvals: [], status: "running", startedAt: Date.now() };
+    const journal = (type: Parameters<Journal["add"]>[2], payload: Record<string, unknown>) => {
+      if (!live()) return;
+      try {
+        opts.journal?.add(project.id, id, type, payload);
+      } catch (e) {
+        log(`journal: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    };
     runs.set(id, { id, gen, abort, projectId: project.id, snap });
     const live = () => runs.get(id)?.gen === gen;
     const emit = (m: ServerMessage) => {
@@ -128,6 +140,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
       snap.endedAt = Date.now();
       if (status === "done") snap.final = text;
       else snap.error = text;
+      journal(status === "done" ? "done" : "error", { text: text.slice(0, 600) });
       runs.delete(id);
       finished.set(id, snap);
       while (finished.size > KEEP_FINISHED) finished.delete(finished.keys().next().value!);
@@ -135,6 +148,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
 
     log(`route ${id}: → ${project.name} (${decision.step}: ${decision.reason})`);
     snap.route = routeInfo(decision, session.cwd);
+    journal("request", { text: firstLine });
     emit({
       type: "request.accepted",
       id,
@@ -151,12 +165,17 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
             snap.text += e.text;
             emit({ type: "reply.delta", id, text: e.text });
             break;
+          case "changed":
+            journal("changed", { path: e.path });
+            break;
           case "tool":
             snap.tools = [...snap.tools, e.summary].slice(-20);
+            journal("tool", { summary: e.summary });
             emit({ type: "reply.tool", id, tool: e.tool, summary: e.summary });
             break;
           case "approval":
             snap.approvals.push({ approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
+            journal("approval", { tool: e.tool, summary: e.summary });
             emit({ type: "approval.needed", id, approvalId: e.approvalId, tool: e.tool, summary: e.summary, detail: e.detail });
             break;
           case "done":
@@ -296,6 +315,24 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
       case "projects.list":
         send(ws, { type: "projects", projects: projectInfo() });
         return;
+      case "catchup.get": {
+        const reg = opts.coordinator?.registry;
+        if (!reg || !opts.journal) return send(ws, { type: "catchup", since: msg.since, cards: [] });
+        const live = new Map<string, "running" | "waiting">();
+        for (const r of runs.values()) live.set(r.id, r.snap.approvals.length ? "waiting" : "running");
+        const cards = opts.journal.catchUp(msg.since, (pid) => {
+          const p = reg.get(pid);
+          return p && { name: p.name, summary: opts.sessions?.summary(pid) ?? "" };
+        }, live);
+        for (const card of cards) {
+          for (const q of card.requests) {
+            const r = runs.get(q.id);
+            if (r?.snap.approvals.length) q.waiting = r.snap.approvals;
+          }
+        }
+        send(ws, { type: "catchup", since: msg.since, cards });
+        return;
+      }
       case "projects.save": {
         const reg = opts.coordinator?.registry;
         if (!reg) return fail(new Error("No agents are configured."));

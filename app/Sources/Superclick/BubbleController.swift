@@ -62,6 +62,7 @@ final class BubbleController: NSObject, NSWindowDelegate {
         if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != me {
             lastExternalApp = front
         }
+        daemon.onOrphanRun = { [weak self] snap in self?.adopt(snap) }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
@@ -118,7 +119,56 @@ final class BubbleController: NSObject, NSWindowDelegate {
         if panel.isVisible { close() }
         present(m)
         if m.phase == .done || m.phase == .failed { m.seen = true }
+        if let id = m.requestID { Notifier.shared.clear(requestID: id) }
         onBackgroundChange?()
+    }
+
+    /// A request the daemon is running that this app doesn't know (it restarted mid-request).
+    private func adopt(_ snap: RunSnapshot) {
+        guard model(forRequest: snap.id) == nil else { return }
+        let m = BubbleModel(restoring: snap, settings: SettingsStore.shared.value)
+        wire(m)
+        daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) }
+        remember(m)
+        for a in m.approvals { notify(m, .approval(a)) }
+        onBackgroundChange?()
+    }
+
+    /// Hooks a bubble's background events up to the menu bar and notifications.
+    private func wire(_ m: BubbleModel) {
+        m.onBackgroundChange = { [weak self] in self?.onBackgroundChange?() }
+        m.onNotable = { [weak self] m, what in self?.notify(m, what) }
+    }
+
+    /// Notifies only for bubbles that aren't on screen; an open bubble already shows it.
+    private func notify(_ m: BubbleModel, _ what: BubbleModel.Notable) {
+        guard let id = m.requestID, !(m === model && panel.isVisible) else { return }
+        let settings = SettingsStore.shared.value
+        switch what {
+        case .approval(let a):
+            if settings.notifyForApprovals { Notifier.shared.approvalNeeded(requestID: id, project: m.projectName, approval: a) }
+        case .finished:
+            if settings.notifyWhenDone {
+                Notifier.shared.answerReady(requestID: id, project: m.projectName, asked: m.askedText,
+                                            answer: m.phase == .failed ? (m.status ?? "") : m.answerText,
+                                            failed: m.phase == .failed)
+            }
+        }
+    }
+
+    /// A notification's button was pressed.
+    func handle(requestID: String, approvalID: String?, action: Notifier.Action) {
+        guard let m = model(forRequest: requestID) else { return }
+        switch action {
+        case .show:
+            show(m)
+        case .allow:
+            if let a = approvalID { answer(m, approval: a, allow: true, message: nil) }
+        case .deny:
+            if let a = approvalID { answer(m, approval: a, allow: false, message: nil) }
+        case .reply(let text):
+            if let a = approvalID { answer(m, approval: a, allow: false, message: text) }
+        }
     }
 
     /// Finds a bubble by its request id (notifications carry the id).
@@ -188,7 +238,7 @@ final class BubbleController: NSObject, NSWindowDelegate {
 
         let prompt = model.promptText
         if daemon.isConnected {
-            model.onBackgroundChange = { [weak self] in self?.onBackgroundChange?() }
+            wire(model)
             // A reply in the same bubble continues in the same project.
             let followUp = (model.phase == .done || model.phase == .failed) ? model.route?.projectID : nil
             let id = daemon.sendRequest(text: text, prompt: prompt, bundle: model.bundle, fullPage: model.fullPage,
@@ -229,6 +279,7 @@ final class BubbleController: NSObject, NSWindowDelegate {
     func answer(_ m: BubbleModel, approval id: String, allow: Bool, message: String?) {
         daemon.answerApproval(id: id, requestID: m.requestID, allow: allow, message: message)
         m.clearApproval(id: id)
+        Notifier.shared.clear(approvalID: id)
         onBackgroundChange?()
     }
 

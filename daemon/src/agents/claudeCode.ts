@@ -2,8 +2,15 @@ import { query as sdkQuery, type CanUseTool, type Options, type SDKMessage } fro
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
+import { changedPath } from "../journal.ts";
 import { within } from "../projects.ts";
 import type { AgentAdapter, AgentEvent, AgentSession, Approval, SendInput, StartOptions } from "./adapter.ts";
+
+/** Set by the compiled daemon's entry point (bin/darwin-*.ts); otherwise the SDK finds Claude Code itself. */
+export function claudeExecutable(): Pick<Options, "pathToClaudeCodeExecutable"> {
+  const p = process.env.SUPERCLICK_CLAUDE_PATH;
+  return p ? { pathToClaudeCodeExecutable: p } : {};
+}
 
 export type QueryFn = (params: { prompt: string; options?: Options }) => AsyncIterable<SDKMessage>;
 
@@ -170,9 +177,14 @@ export class ClaudeCodeSession implements AgentSession {
     const abort = new AbortController();
     input.signal?.addEventListener("abort", () => abort.abort());
 
+    const allowed = (tool: string, toolInput: Record<string, unknown>) => {
+      const path = changedPath(tool, toolInput);
+      if (path) events.push({ type: "changed", path });
+      return { behavior: "allow" as const, updatedInput: toolInput };
+    };
     const canUseTool: CanUseTool = async (tool, toolInput, { signal }) => {
       if (readStaysInside(tool, toolInput, this.cwd) || this.opts.alsoAllowed?.includes(tool)) {
-        return { behavior: "allow", updatedInput: toolInput };
+        return allowed(tool, toolInput);
       }
       const approvalId = randomUUID();
       events.push({ type: "approval", approvalId, tool, summary: describeTool(tool, toolInput), detail: approvalDetail(tool, toolInput) });
@@ -186,7 +198,7 @@ export class ClaudeCodeSession implements AgentSession {
         signal.addEventListener("abort", cancel, { once: true });
         abort.signal.addEventListener("abort", cancel, { once: true });
       });
-      if (decision.allow) return { behavior: "allow", updatedInput: toolInput };
+      if (decision.allow) return allowed(tool, toolInput);
       return {
         behavior: "deny",
         message: decision.message?.trim() ? `The user said: ${decision.message.trim()}` : "The user declined this.",
@@ -205,6 +217,7 @@ export class ClaudeCodeSession implements AgentSession {
       // so a cloned repo must not configure the agent. Its CLAUDE.md is still
       // read, as instructions (projectInstructions).
       settingSources: ["user"],
+      ...claudeExecutable(),
       systemPrompt: { type: "preset", preset: "claude_code", append: SYSTEM_APPEND + projectInstructions(this.cwd) },
       ...(this.opts.mcpServers ? { mcpServers: this.opts.mcpServers } : {}),
     });

@@ -16,6 +16,9 @@ struct RouteInfo: Equatable {
 
 /// A request's state as the daemon holds it, sent after the app reconnects.
 struct RunSnapshot {
+    var id: String
+    /// The first line of what was asked.
+    var asked: String
     var route: RouteInfo?
     var text: String
     var tools: [String]
@@ -36,6 +39,27 @@ struct ProjectRule: Equatable, Identifiable {
     var kind: String
     var pattern: String
     var source: String
+}
+
+/// One "while you were away" card: a project's activity since you left (M4).
+struct CatchUpCard: Identifiable, Equatable {
+    struct Request: Identifiable, Equatable {
+        var id: String
+        var text: String
+        /// running, waiting, done or failed.
+        var status: String
+        var startedAt: Date
+        var endedAt: Date?
+        var ran: [String]
+        var changed: [String]
+        var answer: String?
+        var waiting: [PendingApproval]
+    }
+    var id: String { projectID }
+    var projectID: String
+    var project: String
+    var summary: String
+    var requests: [Request]
 }
 
 /// A project as the daemon's registry holds it.
@@ -99,6 +123,12 @@ final class DaemonClient: ObservableObject {
     @Published private(set) var projects: [ProjectInfo] = []
     /// The last problem the daemon reported that isn't tied to a request (shown in Projects).
     @Published var lastError: String?
+    /// The latest "while you were away" cards, newest request first.
+    @Published private(set) var catchUp: [CatchUpCard] = []
+    @Published private(set) var catchUpLoaded = false
+    /// A request the daemon is running that no bubble knows about (the app restarted). The
+    /// controller makes a bubble for it so its answer and approvals aren't lost.
+    var onOrphanRun: ((RunSnapshot) -> Void)?
     private var task: URLSessionWebSocketTask?
     private let session = URLSession(configuration: .ephemeral)
     private var retry: Task<Void, Never>?
@@ -173,12 +203,21 @@ final class DaemonClient: ObservableObject {
         case "error":
             lastError = obj["detail"] as? String ?? obj["error"] as? String
             return
+        case "catchup":
+            catchUp = (obj["cards"] as? [[String: Any]] ?? []).compactMap(Self.card)
+            catchUpLoaded = true
+            return
         case "sync":
             orphanTimer?.cancel()
             let runs = (obj["runs"] as? [[String: Any]] ?? [])
             var seen = Set<String>()
             for r in runs {
-                guard let id = r["id"] as? String, let handler = handlers[id] else { continue }
+                guard let id = r["id"] as? String else { continue }
+                guard let handler = handlers[id] else {
+                    let snap = Self.snapshot(r)
+                    if snap.status == "running" { onOrphanRun?(snap) }
+                    continue
+                }
                 seen.insert(id)
                 let snap = Self.snapshot(r)
                 handler(.resync(snap))
@@ -231,9 +270,29 @@ final class DaemonClient: ObservableObject {
             return PendingApproval(id: id, tool: a["tool"] as? String ?? "", summary: a["summary"] as? String ?? "",
                                    detail: a["detail"] as? String ?? "")
         }
-        return RunSnapshot(route: (r["route"] as? [String: Any]).flatMap(Self.route), text: r["text"] as? String ?? "",
+        return RunSnapshot(id: r["id"] as? String ?? "", asked: r["asked"] as? String ?? "",
+                           route: (r["route"] as? [String: Any]).flatMap(Self.route), text: r["text"] as? String ?? "",
                            tools: r["tools"] as? [String] ?? [], approvals: approvals,
                            status: r["status"] as? String ?? "running", final: r["final"] as? String, error: r["error"] as? String)
+    }
+
+    private static func card(_ c: [String: Any]) -> CatchUpCard? {
+        guard let pid = c["projectId"] as? String, let name = c["project"] as? String else { return nil }
+        let date = { (v: Any?) in (v as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) } }
+        let requests = (c["requests"] as? [[String: Any]] ?? []).compactMap { q -> CatchUpCard.Request? in
+            guard let id = q["id"] as? String else { return nil }
+            let waiting = (q["waiting"] as? [[String: Any]] ?? []).compactMap { a -> PendingApproval? in
+                guard let aid = a["approvalId"] as? String else { return nil }
+                return PendingApproval(id: aid, tool: a["tool"] as? String ?? "", summary: a["summary"] as? String ?? "",
+                                       detail: a["detail"] as? String ?? "")
+            }
+            return CatchUpCard.Request(
+                id: id, text: q["text"] as? String ?? "", status: q["status"] as? String ?? "done",
+                startedAt: date(q["startedAt"]) ?? Date(), endedAt: date(q["endedAt"]),
+                ran: q["ran"] as? [String] ?? [], changed: q["changed"] as? [String] ?? [],
+                answer: q["answer"] as? String, waiting: waiting)
+        }
+        return CatchUpCard(projectID: pid, project: name, summary: c["summary"] as? String ?? "", requests: requests)
     }
 
     private static func project(_ p: [String: Any]) -> ProjectInfo? {
@@ -298,6 +357,16 @@ final class DaemonClient: ObservableObject {
     }
 
     func refreshProjects() { send(["type": "projects.list"]) }
+
+    func fetchCatchUp(since: Date) {
+        catchUpLoaded = false
+        send(["type": "catchup.get", "since": (since.timeIntervalSince1970 * 1000).rounded()])
+    }
+
+    /// Listens to a request this app didn't start (see onOrphanRun).
+    func attach(requestID: String, onEvent: @escaping (ReplyEvent) -> Void) {
+        handlers[requestID] = onEvent
+    }
 
     func saveProject(id: String?, name: String, paths: [String]? = nil, description: String? = nil) {
         var p: [String: Any] = ["name": name]

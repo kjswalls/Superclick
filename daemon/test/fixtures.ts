@@ -5,6 +5,7 @@ import type { AgentAdapter } from "../src/agents/adapter.ts";
 import type { Classifier, Summarizer } from "../src/agents/quick.ts";
 import { Coordinator } from "../src/coordinator.ts";
 import { openDatabase } from "../src/db.ts";
+import { Journal } from "../src/journal.ts";
 import { ProjectRegistry } from "../src/projects.ts";
 import { SessionManager } from "../src/sessions.ts";
 
@@ -28,5 +29,6 @@ export function world(adapter: AgentAdapter, opts: { classifier?: Classifier; su
   const registry = new ProjectRegistry(db, home);
   const sessions = new SessionManager(adapter, registry, db, opts.summarizer);
   const coordinator = new Coordinator(registry, db, opts.classifier, { clock: opts.clock, summaries: (id) => sessions.summary(id) });
-  return { home, db, registry, sessions, coordinator };
+  const journal = new Journal(db);
+  return { home, db, registry, sessions, coordinator, journal };
 }

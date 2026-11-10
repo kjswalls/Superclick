@@ -1,5 +1,5 @@
 import { query as sdkQuery, type Options } from "@anthropic-ai/claude-agent-sdk";
-import type { QueryFn } from "./claudeCode.ts";
+import { claudeExecutable, type QueryFn } from "./claudeCode.ts";
 
 // Small, fast model calls for the coordinator: routing a request to a project
 // (SPEC routing step 5) and keeping each session's running summary. They go
@@ -88,6 +88,7 @@ export class QuickModel implements Classifier, Summarizer {
       maxTurns: 1,
       persistSession: false,
       settingSources: [],
+      ...claudeExecutable(),
       systemPrompt: system,
       abortController: abort,
       canUseTool: async () => ({ behavior: "deny", message: "No tools here." }),

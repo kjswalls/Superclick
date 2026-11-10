@@ -24,6 +24,21 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - uses: oven-sh/setup-bun@v2
+      - name: Build the whole app, with the compiled daemon
+        working-directory: .
+        run: |
+          scripts/build-app.sh
+          test -x build/Superclick.app/Contents/MacOS/superclick-daemon
+          # The compiled daemon starts, finds its embedded Claude Code, and listens.
+          export SUPERCLICK_HOME="$RUNNER_TEMP/sc-home" SUPERCLICK_PORT=47999
+          build/Superclick.app/Contents/MacOS/superclick-daemon > "$RUNNER_TEMP/daemon.log" 2>&1 &
+          for i in $(seq 1 30); do grep -q listening "$RUNNER_TEMP/daemon.log" && break; sleep 0.5; done
+          cat "$RUNNER_TEMP/daemon.log"
+          grep -q listening "$RUNNER_TEMP/daemon.log"
+          test -f "$SUPERCLICK_HOME/daemon.token"
+          test -f "$SUPERCLICK_HOME/superclick.db"
+          kill %1
 
   daemon:
     name: Daemon (typecheck and tests)
