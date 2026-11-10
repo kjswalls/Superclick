@@ -10,7 +10,9 @@ import { join } from "node:path";
 import { format } from "node:util";
 
 export function prepareLaunchdEnv() {
-  if (process.stdout.isTTY) return; // started by hand in a Terminal: leave it as it is
+  // Only under launchd, which names the job in XPC_SERVICE_NAME. Started by hand
+  // (a Terminal, CI, a script) it keeps its environment and writes to stdout.
+  if (process.env.XPC_SERVICE_NAME !== "dev.superclick.daemon") return;
 
   // The login shell's PATH, as a Terminal would have it.
   const shell = process.env.SHELL || "/bin/zsh";
