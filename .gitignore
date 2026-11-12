@@ -1,0 +1,10 @@
+.DS_Store
+# Swift
+app/.build/
+app/.swiftpm/
+build/
+*.xcodeproj/xcuserdata/
+# Daemon
+daemon/node_modules/
+# Page-text check output
+pagetext-*.txt

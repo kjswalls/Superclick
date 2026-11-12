@@ -1,0 +1,492 @@
+import AppKit
+import SuperclickCapture
+import SuperclickCore
+import SwiftUI
+
+/// A borderless panel that takes keystrokes without activating Superclick,
+/// so the app you summoned over stays frontmost and its selection stays put.
+final class BubblePanel: NSPanel {
+    var onEscape: (() -> Void)?
+
+    init() {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 488, height: 160),
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            backing: .buffered, defer: true)
+        isFloatingPanel = true
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false // the SwiftUI view draws its own, outside the glow
+        hidesOnDeactivate = false
+        isMovableByWindowBackground = true
+        isReleasedWhenClosed = false
+        animationBehavior = .utilityWindow
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) { onEscape?() }
+}
+
+/// Shows the bubble at the cursor on summon, runs one capture per summon, and
+/// sends the request to the agent through the daemon.
+@MainActor
+final class BubbleController: NSObject, NSWindowDelegate {
+    private let panel = BubblePanel()
+    private var model: BubbleModel?
+    /// Bubbles whose request went to the agent, newest first. The menu lists the
+    /// ones still working, waiting for an OK, or with an unread answer.
+    private(set) var answered: [BubbleModel] = []
+    var lastAnswered: BubbleModel? { answered.first }
+    private var clickMonitor: Any?
+    private var anchor: NSPoint = .zero
+    private var placeAbove = false
+    let daemon: DaemonClient
+    var onReport: ((CaptureReport) -> Void)?
+    /// Something changed on a closed bubble (an answer is ready, or it needs approval).
+    var onBackgroundChange: (() -> Void)?
+    /// The last app other than Superclick to be active, so the hotkey works
+    /// while one of our own windows is in front.
+    private var lastExternalApp: NSRunningApplication?
+    private var activationObserver: Any?
+
+    init(daemon: DaemonClient) {
+        self.daemon = daemon
+        super.init()
+        panel.delegate = self
+        panel.onEscape = { [weak self] in self?.close() }
+        let me = ProcessInfo.processInfo.processIdentifier
+        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != me {
+            lastExternalApp = front
+        }
+        daemon.onOrphanRun = { [weak self] snap in self?.adopt(snap) }
+        daemon.onCaptureRequest = { [weak self] id, screenshot, fullPage, project in
+            self?.captureForAgent(requestID: id, screenshot: screenshot, fullPage: fullPage, project: project)
+        }
+        daemon.onCaptureCancel = { [weak self] id in
+            self?.agentCaptures.removeValue(forKey: id)?.markClosed(keepScreenshot: false)
+        }
+        daemon.onApprovalGone = { id in Notifier.shared.clear(approvalID: id) }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != me else { return }
+            Task { @MainActor in self?.lastExternalApp = app }
+        }
+    }
+
+    var isVisible: Bool { panel.isVisible }
+
+    /// True when a closed bubble has an answer or an approval waiting.
+    var hasWaitingAnswer: Bool { !waiting.isEmpty }
+
+    /// Closed bubbles that need the user: an approval, or an answer they haven't seen.
+    var waiting: [BubbleModel] {
+        answered.filter { m in
+            guard m !== model || !panel.isVisible else { return false }
+            return m.approval != nil || ((m.phase == .done || m.phase == .failed) && !m.seen)
+        }
+    }
+
+    /// Closed bubbles still working.
+    var working: [BubbleModel] {
+        answered.filter { ($0 !== model || !panel.isVisible) && $0.isBusy && $0.approval == nil }
+    }
+
+    func toggle(summonedAt: Double) {
+        if panel.isVisible { close() } else { summon(summonedAt: summonedAt) }
+    }
+
+    func summon(summonedAt: Double) {
+        Permissions.shared.refresh()
+        let me = ProcessInfo.processInfo.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        guard let front = (frontmost?.processIdentifier == me ? lastExternalApp : frontmost) ?? lastExternalApp,
+              !front.isTerminated else { return }
+
+        let settings = SettingsStore.shared.value
+        let model = BubbleModel(app: front, summonedAt: summonedAt, settings: settings)
+        present(model)
+        model.markVisible()
+        model.start(onReport: { [weak self] report in self?.onReport?(report) })
+        CursorGlow.shared.play()
+    }
+
+    /// Reopens the last answered bubble at the pointer (from the menu bar).
+    func showLastAnswer() {
+        if let m = lastAnswered { show(m) }
+    }
+
+    /// Reopens a bubble at the pointer: from the menu bar, a notification, or a catch-up card.
+    func show(_ m: BubbleModel) {
+        if panel.isVisible { close() }
+        present(m)
+        if m.phase == .done || m.phase == .failed { m.seen = true }
+        if let id = m.requestID { Notifier.shared.clear(requestID: id) }
+        onBackgroundChange?()
+    }
+
+    /// Called when an agent takes a fresh capture, so the menu bar can show it happened.
+    var onAgentCapture: ((String) -> Void)?
+
+    /// what_am_i_looking_at (M5): the same capture as a summon, with the same
+    /// blocklist and redaction, but no bubble. The agent's call needed the
+    /// user's OK first, and the menu-bar icon shows that a capture happened.
+    /// Captures agents asked for that are still running, so a cancelled one can be dropped.
+    private var agentCaptures: [String: BubbleModel] = [:]
+
+    private func captureForAgent(requestID: String, screenshot: Bool, fullPage: Bool, project: String?) {
+        Permissions.shared.refresh()
+        let me = ProcessInfo.processInfo.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        guard let front = (frontmost?.processIdentifier == me ? lastExternalApp : frontmost) ?? lastExternalApp,
+              !front.isTerminated else {
+            daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: "No app is in front.")
+            return
+        }
+        guard Permissions.shared.accessibility else {
+            daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: "Superclick doesn't have Accessibility permission.")
+            return
+        }
+        var settings = SettingsStore.shared.value
+        settings.captureScreenshot = settings.captureScreenshot && screenshot
+        let m = BubbleModel(app: front, summonedAt: now(), settings: settings)
+        // Kept here, not on the model: reading the page resets the model's own flag.
+        let wantsFull = fullPage
+        agentCaptures[requestID] = m
+        m.start(onReport: { _ in })
+        m.whenCaptured { [weak self, weak m] in
+            guard let self, let m else { return }
+            // Called off (Stop, or the turn ended) while capturing: send nothing.
+            guard self.agentCaptures.removeValue(forKey: requestID) != nil else {
+                m.markClosed(keepScreenshot: false) // deletes a screenshot taken after the cancel
+                return
+            }
+            let b = m.bundle
+            defer { m.markClosed(keepScreenshot: false) }
+            if let reason = b.blockedReason {
+                self.daemon.sendCapture(requestID: requestID, markdown: nil, screenshot: nil, refused: reason)
+                return
+            }
+            var markdown = PromptText.render(request: "", bundle: b, fullPage: wantsFull || settings.wantsFullPage(url: b.url))
+            markdown = markdown.replacingOccurrences(of: #"- Screenshot: [^\n]*\n?"#, with: "", options: .regularExpression)
+            let jpeg = b.screenshotPath.flatMap { Self.jpegBase64(path: $0) }
+            self.daemon.sendCapture(requestID: requestID, markdown: markdown, screenshot: jpeg, refused: nil)
+            self.onAgentCapture?(project.map { "\(b.app.name) for \($0)" } ?? b.app.name)
+        }
+    }
+
+    /// The screenshot, scaled so its long side is at most 1568 px, as base64 JPEG.
+    static func jpegBase64(path: String) -> String? {
+        let url = URL(fileURLWithPath: path) as CFURL
+        guard let src = CGImageSourceCreateWithURL(url, nil) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1568,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, img, [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return (data as Data).base64EncodedString()
+    }
+
+    /// A request the daemon is running that this app doesn't know (it restarted mid-request).
+    private func adopt(_ snap: RunSnapshot) {
+        let running = snap.status == "running"
+        if let m = model(forRequest: snap.id) {
+            // A bubble that gave up on the request (the daemon was away for a while): pick it up again.
+            if running { daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) } }
+            m.apply(.resync(snap))
+            onBackgroundChange?()
+            return
+        }
+        // A run that finished while the app wasn't running comes back as an unseen answer.
+        // One that finished before the app last quit was seen then (or can be found in catch-up).
+        if !running {
+            guard let ended = snap.endedAt, ended > aliveAtLaunch else { return }
+        }
+        let m = BubbleModel(restoring: snap, settings: SettingsStore.shared.value)
+        wire(m)
+        if running { daemon.attach(requestID: snap.id) { [weak m] e in m?.apply(e) } }
+        remember(m)
+        for a in m.approvals { notify(m, .approval(a)) }
+        if !running { notify(m, .finished) }
+        onBackgroundChange?()
+    }
+
+    /// When the app last ran (read once at launch), so runs it already knew about aren't brought back after a restart.
+    private let aliveAtLaunch = BubbleController.lastAlive
+
+    static var lastAlive: Date {
+        UserDefaults.standard.object(forKey: "lastAliveAt") as? Date ?? .distantPast
+    }
+
+    static func noteAlive() {
+        UserDefaults.standard.set(Date(), forKey: "lastAliveAt")
+    }
+
+    /// Hooks a bubble's background events up to the menu bar and notifications.
+    private func wire(_ m: BubbleModel) {
+        m.onBackgroundChange = { [weak self] in self?.onBackgroundChange?() }
+        m.onNotable = { [weak self] m, what in self?.notify(m, what) }
+    }
+
+    /// Notifies only for bubbles that aren't on screen; an open bubble already shows it.
+    private func notify(_ m: BubbleModel, _ what: BubbleModel.Notable) {
+        guard let id = m.requestID, !(m === model && panel.isVisible) else { return }
+        let settings = SettingsStore.shared.value
+        switch what {
+        case .approval(let a):
+            if settings.notifyForApprovals { Notifier.shared.approvalNeeded(requestID: id, project: m.projectName, approval: a) }
+        case .finished:
+            if settings.notifyWhenDone {
+                Notifier.shared.answerReady(requestID: id, project: m.projectName, asked: m.askedText,
+                                            answer: m.phase == .failed ? (m.status ?? "") : m.answerText,
+                                            failed: m.phase == .failed)
+            }
+        }
+    }
+
+    /// A notification's button was pressed.
+    func handle(requestID: String, approvalID: String?, action: Notifier.Action) {
+        guard let m = model(forRequest: requestID) else {
+            // No bubble for it (the app was restarted, say): answer the daemon directly.
+            // It's sent once connected; if the approval is gone by then, the daemon says so.
+            guard let a = approvalID else { return }
+            switch action {
+            case .allow: daemon.answerApproval(id: a, requestID: requestID, allow: true, message: nil)
+            case .deny: daemon.answerApproval(id: a, requestID: requestID, allow: false, message: nil)
+            case .reply(let text): daemon.answerApproval(id: a, requestID: requestID, allow: false, message: text)
+            case .show: break
+            }
+            return
+        }
+        // A stale notification for an approval that's already been answered or has gone.
+        if let a = approvalID, action != .show, !m.approvals.contains(where: { $0.id == a }) {
+            Notifier.shared.clear(approvalID: a)
+            return
+        }
+        switch action {
+        case .show:
+            show(m)
+        case .allow:
+            if let a = approvalID { answer(m, approval: a, allow: true, message: nil) }
+        case .deny:
+            if let a = approvalID { answer(m, approval: a, allow: false, message: nil) }
+        case .reply(let text):
+            if let a = approvalID { answer(m, approval: a, allow: false, message: text) }
+        }
+    }
+
+    /// Finds a bubble by its request id (notifications carry the id).
+    func model(forRequest id: String) -> BubbleModel? {
+        answered.first { $0.requestID == id }
+    }
+
+    private func present(_ model: BubbleModel) {
+        self.model = model
+        let view = BubbleView(
+            model: model, daemon: daemon,
+            onSubmit: { [weak self] in self?.submit() },
+            onClose: { [weak self] in self?.close() },
+            onPaste: { [weak self] in self?.paste() },
+            onApproval: { [weak self] allow in self?.answerApproval(allow: allow) },
+            onMove: { [weak self] id, name, learn in self?.move(projectID: id, name: name, learn: learn) },
+            onStop: { [weak self] in self?.stop() },
+            onHeightChange: { [weak self] h in self?.resize(height: h) })
+        let hosting = NSHostingView(rootView: view)
+        hosting.sizingOptions = []
+        panel.contentView = hosting
+
+        anchor = NSEvent.mouseLocation
+        placeAbove = false
+        let size = hosting.fittingSize
+        resize(height: max(size.height, 120), force: true)
+
+        panel.makeKeyAndOrderFront(nil)
+
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.close() }
+        }
+    }
+
+    /// Keeps the bubble's top-left just below-right of the pointer, flipping
+    /// above it near the bottom of the screen, and always on screen.
+    private func resize(height: CGFloat, force: Bool = false) {
+        let width = BubbleView.width + BubbleView.margin * 2
+        let screen = NSScreen.screens.first { NSMouseInRect(anchor, $0.frame, false) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let offset = NSPoint(x: 6, y: 18)
+
+        var x = anchor.x + offset.x - BubbleView.margin
+        if force || !panel.isVisible {
+            placeAbove = anchor.y - offset.y - height < visible.minY
+        }
+        var y = placeAbove ? anchor.y + 8 - BubbleView.margin : anchor.y - offset.y - height + BubbleView.margin
+        x = min(max(x, visible.minX), visible.maxX - width)
+        y = min(max(y, visible.minY), visible.maxY - height)
+        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+    }
+
+    private func submit() {
+        guard let model, !model.isBusy else { return }
+        let text = model.request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        // Wait for the URL check: nothing leaves the bubble before the blocklist has seen the page.
+        guard model.captureFinished else {
+            model.status = "Finishing the capture…"
+            model.whenCaptured { [weak self, weak model] in
+                guard let self, let model, self.model === model else { return }
+                model.status = nil
+                self.submit()
+            }
+            return
+        }
+
+        let prompt = model.promptText
+        if daemon.isConnected {
+            wire(model)
+            // A reply in the same bubble continues in the same project.
+            let followUp = (model.phase == .done || model.phase == .failed) ? model.route?.projectID : nil
+            let id = daemon.sendRequest(text: text, prompt: prompt, bundle: model.bundle, fullPage: model.fullPage,
+                                        project: followUp) { [weak model] event in model?.apply(event) }
+            if let id {
+                model.beginRequest(id: id, text: text)
+                remember(model)
+                return
+            }
+        }
+
+        // No agent: copy the request with its context, ready to paste into Claude Code.
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(prompt, forType: .string)
+        withAnimation { model.status = "Copied with context. Start the daemon to ask Claude Code from here." }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            if self.model === model { self.close() }
+        }
+    }
+
+    private func remember(_ m: BubbleModel) {
+        answered.removeAll { $0 === m }
+        answered.insert(m, at: 0)
+        // Keep a few; drop finished, seen ones first.
+        while answered.count > 12 {
+            if let i = answered.lastIndex(where: { !$0.isBusy && $0.approval == nil }) { answered.remove(at: i) } else { break }
+        }
+    }
+
+    private func answerApproval(allow: Bool) {
+        guard let model, let a = model.approval else { return }
+        let typed = model.approvalReply.trimmingCharacters(in: .whitespacesAndNewlines)
+        answer(model, approval: a.id, allow: allow && typed.isEmpty, message: typed.isEmpty ? nil : typed)
+    }
+
+    /// Answers one approval, from the bubble or a notification.
+    func answer(_ m: BubbleModel, approval id: String, allow: Bool, message: String?) {
+        daemon.answerApproval(id: id, requestID: m.requestID, allow: allow, message: message)
+        m.clearApproval(id: id)
+        Notifier.shared.clear(approvalID: id)
+        onBackgroundChange?()
+    }
+
+    /// Moves the request to another project, by id or by a typed name (new if none has it).
+    private func move(projectID: String?, name: String?, learn: Bool) {
+        guard let model, let id = model.requestID else { return }
+        if projectID != nil && projectID == model.route?.projectID { model.settleRoute(); return }
+        guard daemon.isConnected else {
+            model.status = "The daemon isn't connected, so the request can't be moved right now."
+            return
+        }
+        model.beginMove()
+        daemon.reroute(requestID: id, projectID: projectID, name: name, learn: learn) { [weak model] e in model?.apply(e) }
+    }
+
+    /// Stops the running turn. The daemon answers with a "Cancelled." error.
+    func stop(_ m: BubbleModel? = nil) {
+        guard let target = m ?? model, let id = target.requestID, target.isBusy else { return }
+        daemon.cancel(requestID: id)
+    }
+
+    /// Paste here: hide the bubble, paste the answer into the app underneath,
+    /// and play the paste glow.
+    private func paste() {
+        guard let model else { return }
+        let text = model.answerText
+        guard !text.isEmpty else { return }
+        model.seen = true
+        close()
+        Paster.paste(text)
+        CursorGlow.shared.play()
+        onBackgroundChange?()
+    }
+
+    func close() {
+        if let m = clickMonitor { NSEvent.removeMonitor(m) }
+        clickMonitor = nil
+        panel.orderOut(nil)
+        panel.contentView = nil
+        if let model {
+            // A screenshot that was never sent is deleted now; one the agent has stays until the daily cleanup.
+            model.markClosed(keepScreenshot: model.requestID != nil)
+            if model.phase == .done || model.phase == .failed { model.seen = true }
+        }
+        model = nil
+        onBackgroundChange?()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        // Clicking into another app or window dismisses the bubble.
+        close()
+    }
+}
+
+/// Pastes text into the frontmost app with ⌘V, then puts the clipboard back.
+enum Paster {
+    @MainActor
+    static func paste(_ text: String) {
+        let pb = NSPasteboard.general
+        let saved: [NSPasteboardItem] = (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        pb.clearContents()
+        // Marked transient so clipboard managers don't keep a copy (nspasteboard.org).
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
+        pb.writeObjects([item])
+        let changeCount = pb.changeCount
+
+        Task { @MainActor in
+            // Give the window server a moment to hand keyboard focus back to the app.
+            try? await Task.sleep(for: .milliseconds(60))
+            let source = CGEventSource(stateID: .combinedSessionState)
+            let v = CGKeyCode(9) // kVK_ANSI_V
+            let down = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: true)
+            let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false)
+            down?.flags = .maskCommand
+            up?.flags = .maskCommand
+            down?.post(tap: .cghidEventTap)
+            up?.post(tap: .cghidEventTap)
+
+            try? await Task.sleep(for: .milliseconds(700))
+            // Restore what was on the clipboard, unless something else changed it meanwhile.
+            if pb.changeCount == changeCount {
+                pb.clearContents()
+                if !saved.isEmpty { pb.writeObjects(saved) }
+            }
+        }
+    }
+}

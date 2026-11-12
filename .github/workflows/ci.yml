@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  mac-app:
+    name: Mac app (build and core tests)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest Xcode on the runner
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+      - uses: oven-sh/setup-bun@v2
+      - name: Build the whole app, with the compiled daemon
+        working-directory: .
+        run: |
+          scripts/build-app.sh
+          test -x build/Superclick.app/Contents/MacOS/superclick-daemon
+          # The compiled daemon starts and listens, and says whether it found Claude Code (the runner has none).
+          export SUPERCLICK_HOME="$RUNNER_TEMP/sc-home" SUPERCLICK_PORT=47999
+          build/Superclick.app/Contents/MacOS/superclick-daemon > "$RUNNER_TEMP/daemon.log" 2>&1 &
+          for i in $(seq 1 30); do grep -q listening "$RUNNER_TEMP/daemon.log" && break; sleep 0.5; done
+          cat "$RUNNER_TEMP/daemon.log"
+          grep -q listening "$RUNNER_TEMP/daemon.log"
+          test -f "$SUPERCLICK_HOME/daemon.token"
+          test -f "$SUPERCLICK_HOME/superclick.db"
+          grep -q "Claude Code" "$RUNNER_TEMP/daemon.log"
+          kill %1
+
+  daemon:
+    name: Daemon (typecheck and tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bunx tsc --noEmit
+      - run: bun test
