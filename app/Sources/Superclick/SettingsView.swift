@@ -69,10 +69,15 @@ final class DaemonLoginItem: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
+    @ObservedObject var daemon: DaemonClient
     @ObservedObject var loginItem = DaemonLoginItem.shared
 
     var body: some View {
         Form {
+            Section("Agents") {
+                ClaudeCodeStatusView(daemon: daemon)
+            }
+
             Section("Daemon") {
                 if loginItem.isBundled {
                     Toggle("Start the daemon at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))

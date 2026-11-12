@@ -47,10 +47,25 @@ export type ClientMessage =
   | { type: "approval.answer"; approvalId: string; allow: boolean; message?: string; id?: string }
   | { type: "request.cancel"; id: string }
   | { type: "context.get"; captureId: string; part: "full" | "selection" | "outline" }
+  /** Look for installed agents again (after the user installs Claude Code, say). */
+  | { type: "agents.check" }
   | { type: "ping" };
+
+/** An agent Superclick can drive, and whether it's on this Mac. */
+export interface AgentStatus {
+  name: string;
+  installed: boolean;
+  path?: string;
+  version?: string;
+  /** Shown when it isn't installed: the command and page to install it. */
+  installCommand?: string;
+  installURL?: string;
+}
 
 export type ServerMessage =
   | { type: "welcome"; version: string; protocol: number }
+  /** Which agents are installed, sent after hello and on agents.check. */
+  | { type: "agents"; agents: AgentStatus[] }
   | { type: "request.accepted"; id: string; captureId: string; note: string; route?: RouteInfo }
   | { type: "reply.delta"; id: string; text: string }
   | { type: "reply.tool"; id: string; tool: string; summary: string }
@@ -168,6 +183,8 @@ export function parseClientMessage(raw: string): ClientMessage {
       return { type: "hello", client: isStr(v.client) ? v.client : "?", version: isStr(v.version) ? v.version : "?" };
     case "ping":
       return { type: "ping" };
+    case "agents.check":
+      return { type: "agents.check" };
     case "request":
       if (!isStr(v.id) || !v.id) throw new ProtocolError("request.id is required");
       if (!isStr(v.text) || !v.text.trim()) throw new ProtocolError("request.text is required");

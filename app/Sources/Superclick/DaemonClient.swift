@@ -63,6 +63,17 @@ struct CatchUpCard: Identifiable, Equatable {
     var requests: [Request]
 }
 
+/// An agent the daemon can drive, and whether it's installed on this Mac.
+struct AgentStatus: Equatable, Identifiable {
+    var name: String
+    var installed: Bool
+    var path: String?
+    var version: String?
+    var installCommand: String?
+    var installURL: String?
+    var id: String { name }
+}
+
 /// A project as the daemon's registry holds it.
 struct ProjectInfo: Equatable, Identifiable {
     static let inboxID = "inbox"
@@ -131,6 +142,9 @@ final class DaemonClient: ObservableObject {
     /// The latest "while you were away" cards, newest request first.
     @Published private(set) var catchUp: [CatchUpCard] = []
     @Published private(set) var catchUpLoaded = false
+    /// Which agents are installed (Claude Code for now). Empty until the daemon says.
+    @Published private(set) var agents: [AgentStatus] = []
+    var claudeCode: AgentStatus? { agents.first { $0.name == "Claude Code" } }
     /// Bumped whenever an approval is asked for, answered or gone, so the catch-up window refetches.
     @Published private(set) var approvalsChanged = 0
     /// A request the daemon is running that no bubble knows about (the app restarted). The
@@ -215,6 +229,14 @@ final class DaemonClient: ObservableObject {
             let queued = queuedAnswers
             queuedAnswers = []
             queued.forEach(send)
+            return
+        case "agents":
+            agents = (obj["agents"] as? [[String: Any]] ?? []).compactMap { a in
+                guard let name = a["name"] as? String else { return nil }
+                return AgentStatus(name: name, installed: a["installed"] as? Bool ?? false, path: a["path"] as? String,
+                                   version: a["version"] as? String, installCommand: a["installCommand"] as? String,
+                                   installURL: a["installURL"] as? String)
+            }
             return
         case "projects":
             projects = (obj["projects"] as? [[String: Any]] ?? []).compactMap(Self.project)
@@ -438,6 +460,9 @@ final class DaemonClient: ObservableObject {
         if let message, !message.isEmpty { obj["message"] = message }
         if isConnected { send(obj) } else { queuedAnswers.append(obj) }
     }
+
+    /// Looks for installed agents again (after installing Claude Code, say).
+    func checkAgents() { send(["type": "agents.check"]) }
 
     func cancel(requestID: String) {
         send(["type": "request.cancel", "id": requestID])

@@ -83,7 +83,7 @@ cd daemon && bun install && bun run start
 bun test                                     # tests
 ```
 
-It uses your Claude Code sign-in; there's no API key to set. The bubble's footer says "daemon on" when it's connected (it retries every 5 s).
+It uses the Claude Code installed on your Mac and its sign-in; there's no API key to set. Install it with `curl -fsSL https://claude.ai/install.sh | bash` if you don't have it (Settings → Agents shows whether it was found). The bubble's footer says "daemon on" when it's connected (it retries every 5 s).
 
 **What to try**
 
@@ -120,7 +120,7 @@ New projects without a folder get one in `~/Library/Application Support/Supercli
 - **Notifications** (macOS Notification Center, never on the cursor): when a closed bubble needs an approval you get Allow, Deny, or Reply (typed instruction) right in the notification; an approval waits up to 12 hours; when it finishes you get "answer ready". Toggle both in Settings → Notifications.
 - **Menu bar**: a count next to the icon for answers and approvals waiting, a row per running or waiting request with Show and Stop, and **While you were away…**: one card per project with what ran, what changed, and what's waiting, with approvals you can answer there.
 - **Restarts**: if the app quits or reconnects, requests the daemon is still running reappear in the menu.
-- **Daemon at login**: `scripts/build-app.sh` compiles the daemon (needs Bun) into the app with Claude Code inside it. Settings → Daemon → **Start the daemon at login** registers it with macOS (System Settings → General → Login Items shows it). Stop any `bun run start` copy first, since both want port 47811. Its log is `~/Library/Logs/Superclick/daemon.log`.
+- **Daemon at login**: `scripts/build-app.sh` compiles the daemon (needs Bun) into the app. It uses your installed Claude Code, not a copy of its own. Settings → Daemon → **Start the daemon at login** registers it with macOS (System Settings → General → Login Items shows it). Stop any `bun run start` copy first, since both want port 47811. Its log is `~/Library/Logs/Superclick/daemon.log`.
 
 **What to try**: ask for something long ("refactor X and run the tests"), press Esc, switch apps, and answer the approval from the notification. Then open While you were away….
 

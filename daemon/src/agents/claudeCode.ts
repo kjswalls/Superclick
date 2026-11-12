@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { changedPath } from "../journal.ts";
+import { MISSING_MESSAGE, findClaude } from "./findClaude.ts";
 import { within } from "../projects.ts";
 import type { AgentAdapter, AgentEvent, AgentSession, Approval, SendInput, StartOptions } from "./adapter.ts";
 
-/** Set by the compiled daemon's entry point (bin/darwin-*.ts); otherwise the SDK finds Claude Code itself. */
+/** The Claude Code installed on this Mac; in development, the SDK's own copy if there's none. */
 export function claudeExecutable(): Pick<Options, "pathToClaudeCodeExecutable"> {
-  const p = process.env.SUPERCLICK_CLAUDE_PATH;
+  const p = findClaude().path;
   return p ? { pathToClaudeCodeExecutable: p } : {};
 }
 
@@ -193,6 +194,11 @@ export class ClaudeCodeSession implements AgentSession {
   }
 
   private async *turn(input: SendInput): AsyncIterable<AgentEvent> {
+    // The real SDK needs Claude Code on the Mac (tests pass their own queryFn).
+    if (this.queryFn === (sdkQuery as unknown as QueryFn) && findClaude().source === "missing") {
+      yield { type: "error", message: MISSING_MESSAGE };
+      return;
+    }
     this.busy = true;
     const events = new EventQueue();
     const abort = new AbortController();

@@ -30,7 +30,8 @@ const fake: QueryFn = async function* (p) {
 let w: ReturnType<typeof world>;
 beforeAll(() => {
   w = world(new ClaudeCodeAdapter(fake));
-  daemon = startDaemon({ token, port: 0, log: () => {}, sessions: w.sessions, coordinator: w.coordinator, journal: w.journal });
+  daemon = startDaemon({ token, port: 0, log: () => {}, sessions: w.sessions, coordinator: w.coordinator, journal: w.journal,
+    agentStatus: (fresh) => [{ name: "Claude Code", installed: fresh, ...(fresh ? {} : { installCommand: "install it" }) }] });
 });
 
 function connect() {
@@ -195,3 +196,12 @@ test("removing a project stops its running turn", async () => {
   c.ws.close();
 });
 
+test("the app hears whether Claude Code is installed, and can ask again", async () => {
+  const c = connect();
+  await c.ready;
+  c.ws.send(JSON.stringify({ type: "hello", client: "test", version: "1" }));
+  expect(await c.until((m) => m.type === "agents")).toMatchObject({ agents: [{ name: "Claude Code", installed: false, installCommand: "install it" }] });
+  c.ws.send(JSON.stringify({ type: "agents.check" }));
+  expect(await c.until((m) => m.type === "agents" && m.agents[0].installed)).toBeTruthy();
+  c.ws.close();
+});

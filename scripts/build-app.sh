@@ -30,7 +30,7 @@ IDENTITY="${SIGN_IDENTITY:--}"
 if command -v bun >/dev/null 2>&1; then
   ARCH="$(uname -m | sed s/x86_64/x64/)"
   (cd "$ROOT/daemon" && bun install --frozen-lockfile >/dev/null && \
-    bun build "bin/darwin-$ARCH.ts" --compile --outfile "$APP/Contents/MacOS/superclick-daemon")
+    bun build bin/compiled.ts --compile --target="bun-darwin-$ARCH" --outfile "$APP/Contents/MacOS/superclick-daemon")
   mkdir -p "$APP/Contents/Library/LaunchAgents"
   cp "$ROOT/app/Support/dev.superclick.daemon.plist" "$APP/Contents/Library/LaunchAgents/"
   codesign --force --options runtime --timestamp=none --entitlements "$ROOT/app/Support/daemon.entitlements" \

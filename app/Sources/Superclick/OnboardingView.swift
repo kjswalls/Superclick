@@ -5,6 +5,7 @@ import SwiftUI
 struct OnboardingView: View {
     @ObservedObject var permissions = Permissions.shared
     @ObservedObject var settings = SettingsStore.shared
+    @ObservedObject var daemon: DaemonClient
     var onDone: () -> Void
 
     var body: some View {
@@ -33,6 +34,15 @@ struct OnboardingView: View {
                     detail: "Takes a screenshot of the front window when you summon. Optional; you can turn screenshots off in Settings.",
                     granted: permissions.screenRecording,
                     action: permissions.requestScreenRecording)
+            }
+
+            // Only when it's missing: Superclick uses your own Claude Code install.
+            if daemon.claudeCode?.installed == false {
+                VStack(alignment: .leading, spacing: 6) {
+                    ClaudeCodeStatusView(daemon: daemon)
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             }
 
             if permissions.screenRecordingNeedsRelaunch && !permissions.screenRecording {

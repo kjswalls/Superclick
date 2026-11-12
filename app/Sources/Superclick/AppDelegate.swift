@@ -52,6 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             .store(in: &cancellables)
 
+        // A missing Claude Code shows on the icon too.
+        daemon.$agents
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.updateStatusIcon() }
+            }
+            .store(in: &cancellables)
+
         // The menu-bar icon carries status (DECISIONS: notifications live in the menu bar).
         Permissions.shared.objectWillChange
             .sink { [weak self] _ in Task { @MainActor in self?.updateStatusIcon() } }
@@ -102,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var needsAttention: Bool {
-        !Permissions.shared.accessibility || hotKeyFailed || bubble.hasWaitingAnswer
+        !Permissions.shared.accessibility || hotKeyFailed || bubble.hasWaitingAnswer || daemon.claudeCode?.installed == false
     }
 
     private func updateStatusIcon() {
@@ -176,6 +183,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item("⚠︎ Grant Accessibility…", #selector(showOnboardingAction)))
         } else if !Permissions.shared.screenRecording {
             menu.addItem(item("Allow screenshots…", #selector(showOnboardingAction)))
+        }
+        if daemon.claudeCode?.installed == false {
+            menu.addItem(item("⚠︎ Install Claude Code…", #selector(showSettings)))
         }
         if let r = diagnostics.last {
             let page = r.pageSinceHotkeyMs.map { ", page \($0) ms" } ?? ""
@@ -281,8 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func showOnboarding() {
         Permissions.shared.startWatching()
-        present(id: "onboarding", title: "Welcome to Superclick", size: NSSize(width: 520, height: 470)) {
-            OnboardingView(onDone: { [weak self] in
+        present(id: "onboarding", title: "Welcome to Superclick", size: NSSize(width: 520, height: 600)) {
+            OnboardingView(daemon: self.daemon, onDone: { [weak self] in
                 SettingsStore.shared.value.onboardingDone = true
                 self?.windows["onboarding"]?.close()
                 Permissions.shared.stopWatching()
@@ -292,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func showSettings() {
         present(id: "settings", title: "Superclick Settings", size: NSSize(width: 560, height: 560)) {
-            SettingsView(store: SettingsStore.shared)
+            SettingsView(store: SettingsStore.shared, daemon: self.daemon)
         }
     }
 

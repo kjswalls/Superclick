@@ -30,7 +30,7 @@ jobs:
         run: |
           scripts/build-app.sh
           test -x build/Superclick.app/Contents/MacOS/superclick-daemon
-          # The compiled daemon starts, finds its embedded Claude Code, and listens.
+          # The compiled daemon starts and listens, and says whether it found Claude Code (the runner has none).
           export SUPERCLICK_HOME="$RUNNER_TEMP/sc-home" SUPERCLICK_PORT=47999
           build/Superclick.app/Contents/MacOS/superclick-daemon > "$RUNNER_TEMP/daemon.log" 2>&1 &
           for i in $(seq 1 30); do grep -q listening "$RUNNER_TEMP/daemon.log" && break; sleep 0.5; done
@@ -38,6 +38,7 @@ jobs:
           grep -q listening "$RUNNER_TEMP/daemon.log"
           test -f "$SUPERCLICK_HOME/daemon.token"
           test -f "$SUPERCLICK_HOME/superclick.db"
+          grep -q "Claude Code" "$RUNNER_TEMP/daemon.log"
           kill %1
 
   daemon:

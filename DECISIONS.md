@@ -126,7 +126,7 @@ Eleven findings, all fixed in M5's commit: narrow learned rules (above), reroute
 
 - **Notifications go to Notification Center** with Allow, Deny and a typed Reply, so approving never needs the bubble. Only for closed bubbles; an open bubble already shows it.
 - **"While you were away" is built from an event log**: what ran (first line of each request and tool), files changed, how it ended. First lines only, kept a week; the routing log is kept four weeks.
-- **The daemon is compiled with `bun build --compile`** with Claude Code embedded, put inside the app, and started at login as a LaunchAgent through SMAppService. Development can still use `bun run start`.
+- **The daemon is compiled with `bun build --compile`** (Claude Code embedded at first; see 2026-11-12), put inside the app, and started at login as a LaunchAgent through SMAppService. Development can still use `bun run start`.
 
 ## 2026-11-10 · M5: context tools for the agent
 
@@ -146,3 +146,14 @@ Twenty-four findings between them, all fixed except where noted. The ones that c
 - **Learned site rules skip segments every page shares** (`/wiki/`, `/item`, `/questions/`), so a move teaches one article or section, not the whole site.
 - **The login daemon logs to `~/Library/Logs/Superclick/daemon.log`** (owner-only) instead of `/tmp`, gets the login shell's PATH, and exits cleanly when another daemon has the port so launchd doesn't restart it in a loop.
 - Not done: a project folder on a stalled network share can still block the daemon briefly on its first path check (results are cached for a few seconds after that).
+
+## 2026-11-12 · Use the Claude Code on the Mac, not a bundled copy
+
+Kirby's call. The app no longer embeds Claude Code: the daemon looks for `claude` on the PATH (the login shell's, under launchd) and where the installers put it (`~/.local/bin`, Homebrew, npm), and `SUPERCLICK_CLAUDE_PATH` still overrides. When it's missing, Settings → Agents, the menu and first-run show the official install command and guide, and requests say how to fix it; "Check again" picks up a new install without a restart. Why: a much smaller app (the daemon is about 90 MB without it), Claude Code updates on its own schedule, the user's own sign-in and settings, and no redistribution question. `bun run start` in development still falls back to the Agent SDK's copy.
+
+## 2026-11-12 · Other agents: the Agent Client Protocol, with Claude Code kept native
+
+Research for OpenClaw (not built yet). OpenClaw speaks the Agent Client Protocol: `openclaw acp` is an ACP agent over stdio that forwards to a running OpenClaw Gateway, with new/resume sessions in a folder, prompts with images, streaming, cancel, and exec approvals relayed as permission requests. It refuses per-session MCP servers, so Superclick's context tools would have to be set up on the Gateway. ACP is also how Codex, Gemini CLI, Goose, OpenCode, Cursor, Copilot and others plug into editors, so one ACP adapter in the daemon covers them all.
+
+Proposed: an `AcpAdapter` that spawns any ACP agent command and maps its updates (text, thoughts, tool calls with diffs, plans, permission requests with the agent's own options) onto a richer bubble that shows whatever the agent offers, instead of only Allow/Deny. ACP permissions can't carry free text, so a typed instruction is sent as a deny plus a follow-up message. Claude Code stays on the Agent SDK, which gives more (typed replies on approvals, Superclick's context tools, settings control).
+

@@ -8,7 +8,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build bin/darwin-$(uname -m | sed s/x86_64/x64/).ts --compile --outfile ../build/superclick-daemon"
+    "build": "bun build bin/compiled.ts --compile --outfile ../build/superclick-daemon"
   },
   "devDependencies": {
     "@types/bun": "latest",

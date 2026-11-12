@@ -1,5 +1,6 @@
 import { loadOrCreateToken, superclickHome } from "./auth.ts";
 import { ClaudeCodeAdapter } from "./agents/claudeCode.ts";
+import { findClaude } from "./agents/findClaude.ts";
 import { QuickModel } from "./agents/quick.ts";
 import { ContextService, RECENT_TOOL } from "./contextMcp.ts";
 import { Coordinator } from "./coordinator.ts";
@@ -39,6 +40,12 @@ try {
 const { server } = started;
 console.log(`[superclick] daemon ${VERSION} listening on ws://127.0.0.1:${server.port}/v1`);
 console.log(`[superclick] data in ${superclickHome()}`);
+{
+  const c = findClaude({ fresh: true });
+  console.log(c.source === "missing"
+    ? "[superclick] Claude Code not found; requests will say how to install it"
+    : `[superclick] Claude Code: ${c.path ?? "the Agent SDK's own copy (development)"}${c.version ? ` (${c.version})` : ""}`);
+}
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {

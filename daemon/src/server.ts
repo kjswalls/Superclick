@@ -6,6 +6,7 @@ import {
   PROTOCOL_VERSION,
   ProtocolError,
   parseClientMessage,
+  type AgentStatus,
   type ClientMessage,
   type ContextBundle,
   type ProjectInfo,
@@ -15,6 +16,7 @@ import {
 } from "./protocol.ts";
 import type { ContextService, FreshCapture } from "./contextMcp.ts";
 import type { Journal } from "./journal.ts";
+import { INSTALL_COMMAND, INSTALL_URL, findClaude } from "./agents/findClaude.ts";
 import type { SessionManager } from "./sessions.ts";
 import { RequestStore } from "./store.ts";
 
@@ -34,7 +36,21 @@ export interface DaemonOptions {
   context?: ContextService;
   /** How long the app gets to answer a capture request. */
   captureTimeoutMs?: number;
+  /** Which agents are installed (Claude Code by default; tests pass their own). */
+  agentStatus?: (fresh: boolean) => AgentStatus[];
   log?: (line: string) => void;
+}
+
+/** Claude Code as found on this Mac. */
+export function claudeCodeStatus(fresh: boolean): AgentStatus[] {
+  const s = findClaude({ fresh });
+  return [{
+    name: "Claude Code",
+    installed: s.source !== "missing",
+    ...(s.path ? { path: s.path } : {}),
+    ...(s.version ? { version: s.version } : {}),
+    ...(s.source === "missing" ? { installCommand: INSTALL_COMMAND, installURL: INSTALL_URL } : {}),
+  }];
 }
 
 interface Conn {
@@ -81,6 +97,7 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
   const broadcast = (m: ServerMessage) => {
     for (const ws of clients) send(ws, m);
   };
+  const agentStatus = opts.agentStatus ?? claudeCodeStatus;
   const runs = new Map<string, Run>();
   /** Requests still being routed, so Stop works before their run starts. */
   const starting = new Map<string, AbortController>();
@@ -326,9 +343,13 @@ export function startDaemon(opts: DaemonOptions): { server: Server<Conn>; store:
         ws.data.client = `${msg.client} ${msg.version}`;
         log(`connected: ${ws.data.client}`);
         if (agents) {
+          send(ws, { type: "agents", agents: agentStatus(false) });
           send(ws, { type: "projects", projects: projectInfo() });
           send(ws, { type: "sync", runs: snapshots() });
         }
+        return;
+      case "agents.check":
+        send(ws, { type: "agents", agents: agentStatus(true) });
         return;
       case "ping":
         send(ws, { type: "pong" });
